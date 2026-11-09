@@ -1,0 +1,5 @@
+// List of excluded plugin names (naming defects)
+// These names are excluded from the Tool_Registry to avoid using threetched services
+// in the 3tched view (steering naming-3tched-threetched.md)
+// See Baseline_Record for the full list
+[]

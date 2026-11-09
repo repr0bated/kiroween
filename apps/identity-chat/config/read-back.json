@@ -1,0 +1,4 @@
+// Empty map - Mutation -> Read_Method mapping
+// Will be populated by runtime discovery
+// See design.md D-14 for details
+{}

@@ -45,7 +45,7 @@ implement the stated interim behaviour now; the remainder is gated.
     unmount, grant, storage, identity or deployment change (Req 1.6).
   - Every observation is redacted before it is written: Credential_Material is
     replaced by a marker naming only the field (Req 1.9).
-  - [ ] 1.1 Write the Baseline_Record entries for every pinned interface the Chat_Interface uses
+  - [~] 1.1 Write the Baseline_Record entries for every pinned interface the Chat_Interface uses
     - Cover `identity_sled` methods, `op-execution-tracker` `ExecutionRecord`,
       `verify_integrity`, `hash_execution`, the Sealed_Method_Schema format
       (`MethodDecl`, `SideEffect`, `required_capability`), the Operation_File
@@ -62,7 +62,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - Record the pinned `crates/threetched-fs` directory name as a pinned
       naming defect (D-35 naming note).
     - _Requirements: 1.1, 1.7, 1.9, 1.11, 17.4_
-  - [ ] 1.2 Write the Runtime_Record entries for Branches and Deployment_Target surfaces
+  - [~] 1.2 Write the Runtime_Record entries for Branches and Deployment_Target surfaces
     - For each discovered Branch and each candidate Deployment_Target
       (its Identity_Container and the Host_Dashboard): present or absent for
       the `3tched` view (`/run/mounts/3tchedFS`), the `threetched` view
@@ -75,7 +75,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - Record B-02 (no mount or Lungs_Socket for the current user) and B-03
       (no 3tchedW3_Identity) if they still hold.
     - _Requirements: 1.2, 1.3, 1.6, 1.9_
-  - [ ] 1.3 Record the Bound_Identity and Execution_Record operations per mounted Branch (BLOCKED: B-02, B-01)
+  - [~] 1.3 Record the Bound_Identity and Execution_Record operations per mounted Branch (BLOCKED: B-02, B-01)
     - **BLOCKED (proposed):** needs a mounted namespace for the Branch (B-02;
       host view also B-01). Until then, write the Blocker_Record of Req 1.8
       per Branch and record the Bound_Identity as unidentified.
@@ -88,7 +88,7 @@ implement the stated interim behaviour now; the remainder is gated.
       fields for D-25 (principal id) and the SID1/OIA1 envelope grammar
       source for D-18. Read `chat_fs.get_protocol` for D-16 diagnostic kinds.
     - _Requirements: 1.4, 1.5, 1.8, 1.9, 6.6_
-  - [ ] 1.4 Build the Legacy_Chat_Inventory with Jev triage (read-only)
+  - [~] 1.4 Build the Legacy_Chat_Inventory with Jev triage (read-only)
     - Start from the D-36 removal candidates and search `/srv/git/odbus-verified`
       and `/srv/git/3tched.com` read-only for further chat code.
     - Per item record: path, symbol, pinned commit, callers traced in
@@ -114,7 +114,7 @@ implement the stated interim behaviour now; the remainder is gated.
       as kept and listed for the owner. List every item whose role is unclear
       for the owner and leave it untouched.
     - _Requirements: 21.2, 21.4, 21.8, 22.1, 22.6, 22.8_
-  - [ ] 1.5 Record the threetched naming defects
+  - [~] 1.5 Record the threetched naming defects
     - Record `chat_router` (renamed from `tched_router` in `71fa232`) and every
       other `chat_*` or `tched_router` name on a threetched-backed service as a
       naming defect in the Baseline_Record, with path and pinned commit.
@@ -126,7 +126,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 18.6, 22.8_
 
 - [ ] 2. Project scaffold and shared types
-  - [ ] 2.1 Create the `apps/identity-chat/` scaffold without installing anything (PARTIAL: D-01, D-34)
+  - [~] 2.1 Create the `apps/identity-chat/` scaffold without installing anything (PARTIAL: D-01, D-34)
     - Create `package.json` with exact versions from the D-01 table for every
       Pinned_Package_Set entry except the Model_Provider package (D-04 OPEN;
       `@ai-sdk/anthropic` is added only by task 19.9). Add `svelte`,
@@ -143,7 +143,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - No React, JSX, TSX or Next.js file or dependency; no `@ai-sdk/mcp` or
       `@modelcontextprotocol/*`.
     - _Requirements: 2.1, 2.2, 2.4, 3.3, 3.5, 3.6_
-  - [ ] 2.2 Define shared types, typed errors and configuration files
+  - [~] 2.2 Define shared types, typed errors and configuration files
     - Create `src/lib/server/types.ts` with the Data Models of the design
       (branded `PrincipalId`, `ChatSessionId`, `ToolKey`, `ViewKind`,
       `CatalogPin`, `RegistryEntry`, `RegistrySnapshot`,
@@ -162,7 +162,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 15.6, 8.12, 6.7_
 
 - [ ] 3. Secret_Guard
-  - [ ] 3.1 Implement `guard/credential-registry.ts` and `guard/secret-guard.ts` `checkItem` (PARTIAL: D-18 envelope grammar OPEN)
+  - [~] 3.1 Implement `guard/credential-registry.ts` and `guard/secret-guard.ts` `checkItem` (PARTIAL: D-18 envelope grammar OPEN)
     - Held-value rule: complete values and every contiguous 16-byte window,
       precomputed per D-18 encoding (raw UTF-8, base64 at all three byte
       alignments, base64url, hex both cases, percent-encoding, JSON string
@@ -179,7 +179,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 3.2 Write property test for held-value and envelope detection
     - **Property 1: Held-value and envelope detection**
     - **Validates: Requirements 5.5, 1.9, 19.5**
-  - [ ] 3.3 Implement `guard/stream-guard.ts` with chunk hold-back
+  - [~] 3.3 Implement `guard/stream-guard.ts` with chunk hold-back
     - Hold back 15 bytes for raw windows and the encoded window length minus
       one for encoded windows; check `heldBack + chunk`; release only bytes
       that can no longer join a window; a match blocks the chunk and the held
@@ -188,7 +188,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 3.4 Write property test for chunk-split detection
     - **Property 2: Chunk-split detection equals whole-item detection**
     - **Validates: Requirements 5.5, 5.6**
-  - [ ] 3.5 Implement fail-closed output gating and the record writers
+  - [~] 3.5 Implement fail-closed output gating and the record writers
     - Wrap every outbound channel (`model-context`, `ui-stream`, `log`,
       `telemetry`, `persisted-server`, `persisted-client`) with a 2 000 ms
       check limit; detection, error or timeout withholds the whole item and
@@ -202,7 +202,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 3.6 Write property test for fail-closed detection
     - **Property 3: Detection and guard failure fail closed**
     - **Validates: Requirements 5.1, 5.2, 5.6, 5.7, 12.8, 15.9**
-  - [ ] 3.7 Implement request-intake checking
+  - [~] 3.7 Implement request-intake checking
     - Check every field of turn, decision and re-verify requests before they
       reach the turn loop, the context builder, the executor or the logger; a
       match rejects the request with a credential-refused error, no state
@@ -213,7 +213,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - **Validates: Requirements 5.8**
 
 - [ ] 4. Profile_Loader and Session_Mode resolution
-  - [ ] 4.1 Write `config/identity-profile.schema.json` and `profile/profile-loader.ts`
+  - [~] 4.1 Write `config/identity-profile.schema.json` and `profile/profile-loader.ts`
     - Schema per D-22 (PROPOSED-DEFAULT): JSON Schema 2020-12,
       `additionalProperties: false` everywhere, `format`, `principal_id`,
       `display_name`, optional `expected_session_id` and `session_mode`,
@@ -240,7 +240,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - **Validates: Requirements 14.7, 14.8**
 
 - [ ] 5. Schema_Validator
-  - [ ] 5.1 Implement `validate/schema-validator.ts`
+  - [~] 5.1 Implement `validate/schema-validator.ts`
     - `Ajv2020` with `strict: false`, `allErrors: true`, `coerceTypes: false`,
       `useDefaults: false`, `removeAdditional: false`, `ajv-formats`.
     - Non-JSON inputs fail with path `""` and constraint `type`; failures list
@@ -255,7 +255,7 @@ implement the stated interim behaviour now; the remainder is gated.
       stdin log and is placed with the Tool_Executor (task 10.10).
 
 - [ ] 6. Tool_Registry with dual-view derivation
-  - [ ] 6.1 Implement `registry/capability-source.ts` with the interim result (PARTIAL: D-11, B-11)
+  - [~] 6.1 Implement `registry/capability-source.ts` with the interim result (PARTIAL: D-11, B-11)
     - Define the `HeldCapabilitySource` interface returning
       `HeldCapabilityResult`. Ship only the interim source that returns
       `{ kind: "undetermined", reason: "source-unknown" }`, so every tool is an
@@ -265,7 +265,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - No code path reads `/dev/shm/opdbus/capability-grants.json` or calls
       `op-grants-materializer`.
     - _Requirements: 6.3, 6.6, 6.11, 7.1_
-  - [ ] 6.2 Implement `registry/tool-registry.ts` `derive` and `aiSdkTools`
+  - [~] 6.2 Implement `registry/tool-registry.ts` `derive` and `aiSdkTools`
     - Pure function of its input: both views' discovery outputs, each with its
       own `CatalogPin`, the held result, the exclusion set and the
       sticky-denied set. Reads no other partition.
@@ -308,7 +308,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - **Validates: Requirements 20.6**
 
 - [ ] 7. Tool_Call status machine and Partitioned_Store
-  - [ ] 7.1 Implement `status/tool-call-status.ts`
+  - [~] 7.1 Implement `status/tool-call-status.ts`
     - Pure `next(status, event)` over Confirmation_Events, Operation_File
       results, Receipts and read-backs; no model-text input.
     - States and transitions exactly as the design state diagram;
@@ -320,7 +320,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 7.2 Write property test for the status state machine
     - **Property 27: Status state machine**
     - **Validates: Requirements 11.1, 11.2, 11.5, 11.6, 8.12**
-  - [ ] 7.3 Implement `state/partitioned-store.ts`
+  - [~] 7.3 Implement `state/partitioned-store.ts`
     - `open(principalId)` returns an opaque `PartitionHandle`; only the
       session manager calls it, with the principal id from the bind Receipt.
     - Missing handle or a handle without an active session throws
@@ -334,7 +334,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 20.9, 20.11, 9.9_
 
 - [ ] 8. Confirmation_Gate
-  - [ ] 8.1 Implement `gate/confirmation-gate.ts`
+  - [~] 8.1 Implement `gate/confirmation-gate.ts`
     - `hold` stores a `PendingToolCall` in the session partition with the held
       `inputBytes` and the D-17 digest: lowercase hex SHA-256 over
       `["identity-chat-confirm/1", principalId, chatSessionId, toolCallId, plugin, method, inputText]`.
@@ -357,13 +357,13 @@ implement the stated interim behaviour now; the remainder is gated.
     - **Property 24: Failed confirmations change nothing**
     - **Validates: Requirements 9.7, 9.8**
 
-- [ ] 9. Checkpoint: core components
+- [~] 9. Checkpoint: core components
   - Ensure all tests pass, ask the user if questions arise. Tests run only on
     explicit owner request; otherwise confirm the core compiles in review and
     ask the owner whether to run the suite.
 
 - [ ] 10. Tool_Executor and identity binder against a fake two-view adapter
-  - [ ] 10.1 Implement `exec/3tched-fs-runner.ts` (PARTIAL: B-09 for `--guest-kernel`; D-09 binary path is host configuration)
+  - [~] 10.1 Implement `exec/3tched-fs-runner.ts` (PARTIAL: B-09 for `--guest-kernel`; D-09 binary path is host configuration)
     - `execFile` with no shell and a fixed argument template:
       `<pinned 3tched-fs> call <plugin> <method> --mount <path of the entry's View_Kind> (--guest-kernel | --expected-session <id>) --args - [--confirm-side-effects]`.
     - Identity flag chosen from the view's `.3tchedfs.json`
@@ -383,7 +383,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 10.2 Write property test for the runner argument template
     - **Property 6: Runner argument template**
     - **Validates: Requirements 5.10, 13.10, 8.1**
-  - [ ] 10.3 Implement the fake two-view Operation_File adapter as a Synthetic_Fixture
+  - [~] 10.3 Implement the fake two-view Operation_File adapter as a Synthetic_Fixture
     - `tests/fixtures/synthetic/fake-operation-file-adapter.ts`, starting with
       `// SYNTHETIC-FIXTURE: identity-chat-interface` (D-28).
     - Serves two independent fake views (`3tched`, `threetched`) with their
@@ -394,7 +394,7 @@ implement the stated interim behaviour now; the remainder is gated.
       no process and opens no mount. Uses only D-28 reserved values.
     - Add a fake clock used by every timer of D-21.
     - _Requirements: 19.10, 8.13_
-  - [ ] 10.4 Implement `identity/identity-binder.ts` and `identity/public-fields.ts` (PARTIAL: D-25 principal id OPEN, D-24 PROPOSED-DEFAULT)
+  - [~] 10.4 Implement `identity/identity-binder.ts` and `identity/public-fields.ts` (PARTIAL: D-25 principal id OPEN, D-24 PROPOSED-DEFAULT)
     - `bind` makes one `identity_sled.get_own_identity {}` call through the
       runner in the session's `3tched` view, 30 s timeout; Denial, timeout or
       unparseable result yields a typed error plus one Blocker_Record and no
@@ -410,7 +410,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 10.5 Write property test for the public field projection
     - **Property 12: Public field projection**
     - **Validates: Requirements 4.8**
-  - [ ] 10.6 Implement `exec/tool-executor.ts` `execute`
+  - [~] 10.6 Implement `exec/tool-executor.ts` `execute`
     - Order: (1) read the entry's view catalog pin, refuse with "catalog
       changed" if it differs and send nothing; (2) mutation only: refuse
       cross-identity arguments (`session_id`, `principal_id`, `principal`,
@@ -430,14 +430,14 @@ implement the stated interim behaviour now; the remainder is gated.
       transport, Door_8090, database edit, raw Incus command or chain call,
       including after a Denial, error or Unknown_Outcome.
     - _Requirements: 4.3, 4.5, 4.10, 4.13, 4.15, 6.10, 7.4, 8.1, 8.13, 8.14, 13.10, 15.1, 20.5, 20.10_
-  - [ ] 10.7 Implement `exec/unknown-outcome.ts` (PARTIAL: D-10, B-13)
+  - [~] 10.7 Implement `exec/unknown-outcome.ts` (PARTIAL: D-10, B-13)
     - Read_Methods: up to 3 byte-identical repetitions, one in flight, 30 s
       each, reusing the original release.
     - Mutation_Methods: zero repetitions (D-10 default), immediate `unknown`
       status, a Blocker_Record and an unknown-outcome tool result. Any
       mutation repetition or receipt recovery is task 19.5.
     - _Requirements: 8.6, 9.4, 15.8_
-  - [ ] 10.8 Implement `exec/read-back.ts` (PARTIAL: D-14)
+  - [~] 10.8 Implement `exec/read-back.ts` (PARTIAL: D-14)
     - Look up `config/read-back.json` (`plugin.method` to
       `{ plugin, method, args_from }`); run the mapped Read_Method through the
       same view; with no mapping, a Denial or an error, return the receipt
@@ -472,7 +472,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 8.5, 8.12, 15.1, 15.4_
 
 - [ ] 11. Chain_Verifier
-  - [ ] 11.1 Implement `chain/chain-verifier.ts` `verify` (continuity only, D-30)
+  - [~] 11.1 Implement `chain/chain-verifier.ts` `verify` (continuity only, D-30)
     - Pure; accepts only segments with `source: "operation-file"`;
       `continuity` broken iff some `i >= 1` has
       `records[i].prevHash !== records[i - 1].execHash`; `firstBrokenIndex`
@@ -487,7 +487,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 11.3 Write property test for verdict precedence
     - **Property 26: Verdict precedence**
     - **Validates: Requirements 10.4, 10.10, 10.11**
-  - [ ] 11.4 Implement segment reading and receipt linking with interim results (PARTIAL: D-12, D-13, B-12)
+  - [~] 11.4 Implement segment reading and receipt linking with interim results (PARTIAL: D-12, D-13, B-12)
     - Define the segment-reader interface (reads only through the
       Tool_Executor in the session's own view). Ship the interim reader that
       reports `unverified` with reason "no Execution_Record read granted" and
@@ -498,7 +498,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 10.1, 10.6, 10.7, 10.11_
 
 - [ ] 12. Model_Context_Builder
-  - [ ] 12.1 Implement `context/system-prompt.ts` and `context/model-context-builder.ts`
+  - [~] 12.1 Implement `context/system-prompt.ts` and `context/model-context-builder.ts`
     - System prompt: the D-26 text verbatim (PROPOSED-DEFAULT), slots filled
       once per session from Public_Identity_Fields.
     - `build(partitionHandle, session)` uses only the session's own partition;
@@ -517,7 +517,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - **Property 5: No Credential_Material in any Model_Context**
     - **Validates: Requirements 12.5, 5.1, 12.3**
 
-- [ ] 13. Checkpoint: executor, chain and context
+- [~] 13. Checkpoint: executor, chain and context
   - Ensure all tests pass, ask the user if questions arise. Tests run only on
     explicit owner request.
 
@@ -525,13 +525,13 @@ implement the stated interim behaviour now; the remainder is gated.
   - Model calls in this task use only an injected AI SDK `LanguageModel`; tests
     and the harness use the mock model from `ai/test`. No provider package is
     constructed here (D-04, task 19.9).
-  - [ ] 14.1 Define the host adapter boundary in `route/hosts/host-adapter.ts`
+  - [~] 14.1 Define the host adapter boundary in `route/hosts/host-adapter.ts`
     - `ChatRouteHost`, `HostBinding` (profile file source and both view mount
       paths), `ChatRouteCore`, `SessionKey`, `DeploymentTargetKind`,
       `PathRecord`. The session key comes from the host's server-side session
       table, never from a request body. Adapters add no listening socket.
     - _Requirements: 13.2, 13.10, 20.1, 4.2_
-  - [ ] 14.2 Implement session start and end in `route/chat-route.ts`
+  - [~] 14.2 Implement session start and end in `route/chat-route.ts`
     - Start: read-only observation of `.3tchedfs.json` and `view.json` in both
       views (D-08); derive the Deployment_Target from `mount_identity.kind`;
       require each host binding path to equal the profile's `mount_paths`
@@ -549,7 +549,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - End: discard that session's pending calls only and drop its partition
       entries.
     - _Requirements: 1.10, 4.1, 4.2, 4.4, 4.6, 4.7, 4.9, 4.14, 6.1, 6.14, 15.1, 15.5, 19.2, 19.4, 19.8, 19.12, 19.13, 20.1, 20.11_
-  - [ ] 14.3 Implement `route/turn-loop.ts`
+  - [~] 14.3 Implement `route/turn-loop.ts`
     - One operator message starts one turn; AI SDK `streamText` with offered
       tools and no `execute`.
     - Per structured tool-call part: increment the turn counter first; stop
@@ -572,7 +572,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - Session_Mode changes only the limit; no other component takes a mode
       argument.
     - _Requirements: 6.5, 6.10, 7.2, 7.4, 7.5, 7.6, 7.7, 7.9, 8.2, 8.3, 8.4, 8.10, 11.1, 11.2, 11.4, 11.5, 14.3, 14.5, 14.7, 14.9, 15.3, 15.6_
-  - [ ] 14.4 Implement decisions, re-verification and request rejection in `route/chat-route.ts`
+  - [~] 14.4 Implement decisions, re-verification and request rejection in `route/chat-route.ts`
     - `handleDecision` accepts only `{ type: "approve", toolCallId, digest }`
       or `{ type: "reject", toolCallId }`, attributes them through the
       server-side `SessionKey`, and refuses decisions for denied tools.
@@ -585,7 +585,7 @@ implement the stated interim behaviour now; the remainder is gated.
       rejected with no state change and a redacted security event naming both
       display names.
     - _Requirements: 6.9, 7.8, 8.11, 9.2, 9.3, 9.5, 9.7, 10.9, 10.10, 14.8, 20.3, 20.7_
-  - [ ] 14.5 Implement `route/chat-sdk-intake.ts` (PARTIAL: D-02 sub-check B-15; needs task 19.1 to read installed sources)
+  - [~] 14.5 Implement `route/chat-sdk-intake.ts` (PARTIAL: D-02 sub-check B-15; needs task 19.1 to read installed sources)
     - `chat` + `@chat-adapter/web` + `@chat-adapter/state-memory`; `getUser`
       returns `{ id: base64url(principalId) }` from the server-side session or
       `null`; thread id `web:{base64url(principalId)}:{conversationId}`;
@@ -597,7 +597,7 @@ implement the stated interim behaviour now; the remainder is gated.
       `createUIMessageStreamResponse` with the same intake rules, and record
       the switch in `design.md` through the owner.
     - _Requirements: 6.9, 8.11, 20.1, 3.8_
-  - [ ] 14.6 Implement `route/hosts/in-process.ts`
+  - [~] 14.6 Implement `route/hosts/in-process.ts`
     - Drives `ChatRouteCore` with Fetch `Request` objects built in-process,
       uses the fake two-view adapter and the `ai/test` mock model, opens no
       socket, and delivers each tagged item only to the client whose
@@ -653,7 +653,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 4.6, 4.14, 7.3, 7.7, 9.5, 9.9, 10.6, 12.7, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 19.2_
 
 - [ ] 15. Chat_UI for the backend contract
-  - [ ] 15.1 Implement the json-render Catalog and Component_Registry
+  - [~] 15.1 Implement the json-render Catalog and Component_Registry
     - `src/lib/catalog/catalog.ts` and `registry.ts` with Svelte components
       `ModelOutput` (labelled "model output"), `ToolCallCard`, `ErrorNotice`
       (kind, failing item, next step), `IdentityHeader` (Public_Identity_Fields
@@ -669,7 +669,7 @@ implement the stated interim behaviour now; the remainder is gated.
       from `ConfirmationPrompt`, text status labels besides color, WCAG 2.2
       AA contrast tokens.
     - _Requirements: 2.1, 2.5, 2.6, 4.8, 6.4, 7.3, 8.5, 9.1, 10.1, 10.2, 10.7, 11.3, 14.2, 15.6, 16.1, 16.2, 16.3, 16.4, 16.5, 16.6_
-  - [ ] 15.2 Implement the client status store, decisions and transport (PARTIAL: D-06, B-04, B-05)
+  - [~] 15.2 Implement the client status store, decisions and transport (PARTIAL: D-06, B-04, B-05)
     - `src/lib/client/chat-transport.ts`: a `ChatTransport` interface plus the
       in-process transport used with the harness only. A Deployment_Target
       transport is task 19.10.
@@ -699,7 +699,7 @@ implement the stated interim behaviour now; the remainder is gated.
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6, 5.4_
 
 - [ ] 16. Repository checks
-  - [ ] 16.1 Implement `scripts/check-forbidden-imports.ts`
+  - [~] 16.1 Implement `scripts/check-forbidden-imports.ts`
     - Fails on React, JSX or TSX files, Next.js, `@ai-sdk/mcp`,
       `@modelcontextprotocol/*`, AI SDK symbols containing `MCP`, imports
       resolving into `/srv/git/3tched.com` or `/srv/git/odbus-verified`, any
@@ -709,7 +709,7 @@ implement the stated interim behaviour now; the remainder is gated.
       `src/routes`) for Pinned_Package_Set entries D-01 records as
       Chat_Route only.
     - _Requirements: 2.3, 2.4, 3.5, 3.7, 7.1, 13.9, 21.1_
-  - [ ] 16.2 Implement `scripts/check-branch-literals.ts` (PARTIAL: D-18 envelope rule interim; runtime-value row needs task 1.2)
+  - [~] 16.2 Implement `scripts/check-branch-literals.ts` (PARTIAL: D-18 envelope rule interim; runtime-value row needs task 1.2)
     - D-29 categories: session-id, principal-or-genesis, public-key,
       container-name, runtime-value, plugin-allowlist, capability-list,
       credential. Prints `path:line:category`, never the value; exits 1 on
@@ -720,7 +720,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 16.3 Write property test for the branch-literal check
     - **Property 44: Branch-literal check**
     - **Validates: Requirements 19.9, 19.10, 5.9**
-  - [ ] 16.4 Implement `scripts/check-pins.ts`
+  - [~] 16.4 Implement `scripts/check-pins.ts`
     - Compares the D-01 table in `design.md`, `package.json` specifiers and
       `package-lock.json` resolutions; reports differing versions and every
       non-exact specifier (ranges, tags, wildcards, `latest`, `workspace:`);
@@ -730,23 +730,23 @@ implement the stated interim behaviour now; the remainder is gated.
   - [ ]* 16.5 Write property test for the pin drift check
     - **Property 43: Pin drift check**
     - **Validates: Requirements 3.3, 3.9**
-  - [ ] 16.6 Implement `scripts/check-catalog.ts`
+  - [~] 16.6 Implement `scripts/check-catalog.ts`
     - Reports every visible element used in `src/routes` and
       `src/lib/catalog` components that lacks a Catalog declaration or a
       Component_Registry implementation.
     - _Requirements: 2.7_
-  - [ ] 16.7 Wire the checks and credential scan into `package.json` scripts
+  - [~] 16.7 Wire the checks and credential scan into `package.json` scripts
     - Add `check:*` scripts for the four checks; extend the Cockpit_Spec
       Requirement 8.5 credential scan configuration to cover
       `apps/identity-chat/**`. Scripts run only on explicit owner request.
     - _Requirements: 5.9, 17.2_
 
-- [ ] 17. Checkpoint: route, UI and checks
+- [~] 17. Checkpoint: route, UI and checks
   - Ensure all tests pass, ask the user if questions arise. Tests, linters,
     formatting checks and smoke runs happen only on explicit owner request.
 
 - [ ] 18. Provenance and status records
-  - [ ] 18.1 Add the Chat_Interface entries to `PROVENANCE.md` and the Status_Report
+  - [~] 18.1 Add the Chat_Interface entries to `PROVENANCE.md` and the Status_Report
     - Each component with path and producing task ids; each pinned
       dependency (op-dbus modules, `identity_sled`, execution tracker, grant
       materializer, Operation_File contract, Door_8090, Op_Web_Connector,
@@ -761,7 +761,7 @@ implement the stated interim behaviour now; the remainder is gated.
   - Each sub-task names its gating IDs. Do not start a sub-task until every
     gate is resolved in `design.md` (decisions) or the Runtime_Record
     (blockers). Any Live_Change inside them also needs Owner_Authorization.
-  - [ ] 19.1 Create the lockfile and confirm package facts (BLOCKED: D-01 confirmation, D-34, explicit owner request)
+  - [~] 19.1 Create the lockfile and confirm package facts (BLOCKED: D-01 confirmation, D-34, explicit owner request)
     - **BLOCKED (proposed):** runs `npm install` in `apps/identity-chat/` only
       when the owner asks and after the owner confirms the D-01 versions.
     - Commit `package-lock.json`; confirm from installed sources the UI
@@ -769,47 +769,47 @@ implement the stated interim behaviour now; the remainder is gated.
       React/JSX/Next.js and runtime peers (Blocker_Record if any violates
       Req 2 or 13), and resolve B-15 for task 14.5.
     - _Requirements: 3.3, 3.4, 3.6, 3.8_
-  - [ ] 19.2 Implement the real Held_Capability_Set reader (BLOCKED: D-11, B-11, B-02)
+  - [~] 19.2 Implement the real Held_Capability_Set reader (BLOCKED: D-11, B-11, B-02)
     - **BLOCKED (proposed):** needs the source discovered in task 1.3 and
       recorded in D-11 without naming a Branch.
     - Replace the interim source of task 6.1 with a reader that calls the
       recorded Read_Method through the session's own view and parses the
       result; Denial, no Receipt or unparseable result stays `undetermined`.
     - _Requirements: 6.2, 6.3, 6.6, 6.11_
-  - [ ] 19.3 Implement the Execution_Record read and Receipt linking (BLOCKED: D-12, D-13, B-12, B-02)
+  - [~] 19.3 Implement the Execution_Record read and Receipt linking (BLOCKED: D-12, D-13, B-12, B-02)
     - **BLOCKED (proposed):** needs the granted read operation (D-12) and the
       Receipt-to-record mapping (D-13).
     - Replace the interim reader of task 11.4; link Tool_Calls by the
       recorded execution identifier; keep `unlinked` reasons for missing
       identifiers or records.
     - _Requirements: 10.1, 10.2, 10.6, 10.10, 10.11_
-  - [ ] 19.4 Populate `config/read-back.json` (BLOCKED: D-14, B-02)
+  - [~] 19.4 Populate `config/read-back.json` (BLOCKED: D-14, B-02)
     - **BLOCKED (proposed):** add only mappings confirmed in mounted schemas
       (candidates `identity_sled.touch_session` to `get_own_identity`,
       `record_session_event` to `get_session_history`).
     - _Requirements: 8.5, 11.1_
-  - [ ] 19.5 Implement mutation Unknown_Outcome reconciliation (BLOCKED: D-10, B-13)
+  - [~] 19.5 Implement mutation Unknown_Outcome reconciliation (BLOCKED: D-10, B-13)
     - **BLOCKED (proposed):** owner decision needed between Requirement 8.6 as
       written and the pinned client guidance; may need a requirements
       amendment. Options: repeat only `idempotent: true` mutations, or recover
       through the receipt method when an operation id is known.
     - _Requirements: 8.6, 9.4, 15.8_
-  - [ ] 19.6 Add the excluded plugin names (BLOCKED: D-32, B-14)
+  - [~] 19.6 Add the excluded plugin names (BLOCKED: D-32, B-14)
     - **BLOCKED (proposed):** owner decision on Requirement 6.7 against
       Cockpit_Spec 25.2. If confirmed, add the two names only to
       `config/naming-defect-exclusions.json`, citing the Baseline_Record.
     - _Requirements: 6.7_
-  - [ ] 19.7 Implement the real SID1 and OIA1 envelope grammar (BLOCKED: D-18 part, B-02 for discovery if the grammar is runtime-only)
+  - [~] 19.7 Implement the real SID1 and OIA1 envelope grammar (BLOCKED: D-18 part, B-02 for discovery if the grammar is runtime-only)
     - **BLOCKED (proposed):** read the grammar from the pinned identity source,
       record it in D-18, then replace the interim envelope rule in tasks 3.1
       and 16.2.
     - _Requirements: 5.5, 19.9_
-  - [ ] 19.8 Fix the principal id mapping (BLOCKED: D-25 under D-23, B-02)
+  - [~] 19.8 Fix the principal id mapping (BLOCKED: D-25 under D-23, B-02)
     - **BLOCKED (proposed):** confirm whether `genesis`, `wireguard_pubkey` or a
       dedicated runtime field is the principal id, record it in D-25, and
       update the single derivation function of task 10.4.
     - _Requirements: 4.4, 19.12, 20.1_
-  - [ ] 19.9 Implement `provider/model-provider.ts` (BLOCKED: D-04, D-05, D-07, B-06, B-07, B-08)
+  - [~] 19.9 Implement `provider/model-provider.ts` (BLOCKED: D-04, D-05, D-07, B-06, B-07, B-08)
     - **BLOCKED (proposed):** needs the Model_Provider, exact model identifier
       and version, retention terms, the provider package entry in D-01, the
       Provider_Credential location per Deployment_Target and a named
@@ -822,7 +822,7 @@ implement the stated interim behaviour now; the remainder is gated.
       requests only after the guard check, outbound only over the recorded
       Egress_Path.
     - _Requirements: 12.1, 12.2, 12.4, 12.6, 12.7, 12.8, 13.6, 13.8_
-  - [ ] 19.10 Implement Deployment_Target host adapters and Chat_UI transports (BLOCKED: D-06, B-04, B-05)
+  - [~] 19.10 Implement Deployment_Target host adapters and Chat_UI transports (BLOCKED: D-06, B-04, B-05)
     - **BLOCKED (proposed):** no Chat_Route location uses only pre-existing
       hops. When `design.md` records one, implement its `ChatRouteHost` and
       matching `ChatTransport` with every hop named, verify by Runtime_Record
@@ -830,22 +830,22 @@ implement the stated interim behaviour now; the remainder is gated.
       Lungs_Socket only with no Incus proxy, `egress-socket`, HTTP proxy or
       extra host socket.
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.7, 15.7_
-  - [ ] 19.11 Enable the Identity_Container executor path (BLOCKED: B-09, B-10, B-02)
+  - [~] 19.11 Enable the Identity_Container executor path (BLOCKED: B-09, B-10, B-02)
     - **BLOCKED (proposed):** the deployed `3tched-fs` binary must carry
       `--guest-kernel` (Baseline_Record build commit), and any task relying on
       `refresh_credential` output waits for B-10.
     - _Requirements: 1.7, 5.10_
-  - [ ] 19.12 Route 3tchedW3 calls through the Chatbot_Glue (BLOCKED: B-03, B-02)
+  - [~] 19.12 Route 3tchedW3 calls through the Chatbot_Glue (BLOCKED: B-03, B-02)
     - **BLOCKED (proposed):** needs the 3tchedW3_Identity and the Cockpit_Spec
       Requirement 18 glue; calls the glue's existing interface only.
     - _Requirements: 8.7_
-  - [ ] 19.13 Enable host 3tchedFS views (BLOCKED: B-01)
+  - [~] 19.13 Enable host 3tchedFS views (BLOCKED: B-01)
     - **BLOCKED (proposed):** only after a Runtime_Record entry timestamped
       after the deployed catalog fix shows the host view mounted. No other
       mount path, no catalog edit, no fix deployment without
       Owner_Authorization.
     - _Requirements: 1.11_
-  - [ ] 19.14 Run the Chat_Interface under a Branch (BLOCKED: Owner_Authorization naming the Branch, plus 19.9, 19.10 and B-01 or B-02)
+  - [~] 19.14 Run the Chat_Interface under a Branch (BLOCKED: Owner_Authorization naming the Branch, plus 19.9, 19.10 and B-01 or B-02)
     - **BLOCKED (proposed):** a Live_Change under Cockpit_Spec Requirement 20.
     - _Requirements: 4.12, 17.1_
 
@@ -855,7 +855,7 @@ implement the stated interim behaviour now; the remainder is gated.
     unmodified"), so confirm the exception scope with the owner before
     starting. `chat_router` itself is a threetched-backed service and is not
     removed.
-  - [ ] 20.1 Claim and trace the coupling (read-only first)
+  - [~] 20.1 Claim and trace the coupling (read-only first)
     - Claim `crates/op-plugins/src/state_plugins/ctl_plane_chatbot.rs` and
       `ctl_plane_chatbot_methods.rs` under the op-dbus HANDOFF rules (one
       owner per file). Check that no other agent's build, seal or activation
@@ -866,11 +866,11 @@ implement the stated interim behaviour now; the remainder is gated.
       `crates/op-grpc-bridge/src/ctl_plane_chatbot_dispatch.rs` and
       `crates/op-cozo-store/src/ctl_plane_chatbot_episodes.rs`.
     - _Requirements: 22.6, 22.8, 21.7_
-  - [ ] 20.2 Replace the coupled types, limits and plugin id with ones owned by `ctl_plane_chatbot`
+  - [~] 20.2 Replace the coupled types, limits and plugin id with ones owned by `ctl_plane_chatbot`
     - Keep every other method, record field and the schema contract except
       the removed `chat_router` coupling; no shim.
     - _Requirements: 22.6, 22.8_
-  - [ ] 20.3 Verify the cut (BLOCKED for the live part: B-01 or B-02, Owner_Authorization)
+  - [~] 20.3 Verify the cut (BLOCKED for the live part: B-01 or B-02, Owner_Authorization)
     - Scoped build of the owning crate only:
       `cargo build -p op-plugins --target x86_64-unknown-linux-gnu`, never
       alongside another Cargo process. Search shows no `chat_router` reference
@@ -889,7 +889,7 @@ implement the stated interim behaviour now; the remainder is gated.
     control-plane identity or any identity, grant or storage binding.
   - Removals in `/srv/git/3tched.com` conflict with Requirement 17.4 in the
     same way as task 20; confirm the exception scope with the owner first.
-  - [ ] 21.1 Remove one confirmed chat-code item completely
+  - [~] 21.1 Remove one confirmed chat-code item completely
     - Claim under the owning repository's HANDOFF rules; never during
       another agent's build, seal or activation.
     - Remove source, module declarations, Cargo membership, plugin
@@ -898,7 +898,7 @@ implement the stated interim behaviour now; the remainder is gated.
       it as current. No remnant, no shim. Repeat per item with one focused
       commit each.
     - _Requirements: 21.3, 21.7_
-  - [ ] 21.2 Verify each removal (BLOCKED for the live part: B-01 or B-02, Owner_Authorization)
+  - [~] 21.2 Verify each removal (BLOCKED for the live part: B-01 or B-02, Owner_Authorization)
     - Repository search shows no reference to the removed symbols, paths,
       plugin ids or service names outside archived history; scoped
       `x86_64-unknown-linux-gnu` build of the affected crates only.
@@ -907,7 +907,7 @@ implement the stated interim behaviour now; the remainder is gated.
       need a mount and Owner_Authorization; deploying the removal is a
       Live_Change.
     - _Requirements: 21.5_
-  - [ ] 21.3 Restore and record on failure
+  - [~] 21.3 Restore and record on failure
     - If a removal breaks the scoped build, a remaining service or either
       view, restore the item from version control, write a Blocker_Record
       naming the dependency and leave that removal proposed.
@@ -916,25 +916,25 @@ implement the stated interim behaviour now; the remainder is gated.
 - [ ] 22. Cut the control-plane identity over to the new Chat_Interface (BLOCKED: Owner_Authorization, tasks 20 and 21, 19.9, 19.10, B-01 or B-02)
   - The identity, its session, credentials, grants, storage and container
     binding stay unchanged. No identity-specific code path is added.
-  - [ ] 22.1 Bind the control-plane identity as an ordinary Branch
+  - [~] 22.1 Bind the control-plane identity as an ordinary Branch
     - **BLOCKED (proposed):** write its Identity_Profile as data (no code),
       with both view paths and its allowed Deployment_Target, after the
       Chat_Route location (D-06) and Egress_Path (D-07) exist.
     - `ctl_plane_chatbot` methods enter the Tool_Registry from the `3tched`
       view under the normal capability, validation and confirmation rules.
     - _Requirements: 22.1, 22.2, 22.3, 22.7_
-  - [ ] 22.2 Verify the cutover
+  - [~] 22.2 Verify the cutover
     - **BLOCKED (proposed):** Live_Change. Start a Chat_Session under the
       identity; record the `get_own_identity` Receipt, one granted read
       Tool_Call Receipt with read-back, and a search showing no call from the
       identity's services into removed chat code.
     - _Requirements: 22.4_
-  - [ ] 22.3 Record an unreachable cutover
+  - [~] 22.3 Record an unreachable cutover
     - If no recorded existing path reaches the Chat_Interface, write a
       Blocker_Record and keep the identity and its state unchanged.
     - _Requirements: 22.5_
 
-- [ ] 23. Final checkpoint
+- [~] 23. Final checkpoint
   - Ensure all tests pass, ask the user if questions arise. Update the
     Status_Report (task 18.1) with proposed, implemented, built, tested and
     deployed status per component.

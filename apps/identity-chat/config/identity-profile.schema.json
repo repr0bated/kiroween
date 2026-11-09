@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kiroween.dev/identity-chat-profile/1",
+  "type": "object",
+  "title": "Identity Chat Profile",
+  "description": "Configuration for an identity chat session",
+  "additionalProperties": false,
+  "required": ["format", "principal_id", "display_name", "deployment_targets"],
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "identity-chat-profile/1"
+    },
+    "principal_id": {
+      "type": "string"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "expected_session_id": {
+      "type": "string"
+    },
+    "session_mode": {
+      "type": "string",
+      "enum": ["standard", "control_plane", "ui_build"]
+    },
+    "deployment_targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "mount_paths"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["identity_container", "host_dashboard"]
+          },
+          "mount_paths": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["3tched", "threetched"],
+            "properties": {
+              "3tched": {
+                "type": "string"
+              },
+              "threetched": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

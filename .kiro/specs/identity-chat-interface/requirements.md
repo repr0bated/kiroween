@@ -84,6 +84,46 @@ findings. The Implementer must re-verify each one before relying on it
   Requirement 25).
 - Owner decision (2026-11-08): one Chat_Interface for all Branches, bound to
   whichever sealed identity it runs as.
+- Owner decisions on plugin feeds (2026-11-08, verbatim): (1) "each plugin
+  schema and state should have own emqx feed and subscription to deliver
+  schema to ui"; (2) "i approve the control plane boundary for emqx, and this
+  should use the private emqx transport at 127 port 9000"; (3) "all feeds are
+  subject to gating if you are not supposed to see the feed."; (4) "yes gating
+  emqx delivery tonic-web"; (5) answer "yes" to design question B-21: return
+  to requirements to add feeds and settle the Requirement 5.6 conflict; (6)
+  "mqtt needs to read current state from shm that is the single source of
+  truth" and "the ui requires state it has to be delivered somehow".
+  Decisions (1) to (6) are superseded for the Chat_Interface by the later
+  owner decisions below: EMQX is not on the chat path (Requirement 29).
+- Later owner decisions (2026-11-08): (A) "the 3tchedfs is a runtime mirror
+  of the blobs in shm"; SHM_State is the single source of truth. (B) Every
+  op-dbus call, including the identity check, is local file I/O on the
+  mounted views (Requirement 30); "if it is possible to go through fuse it
+  should" (Requirement 31); credential checks run locally on the same files
+  (Requirement 28.5). (C) The Chat_Route stays TypeScript and keeps the
+  Vercel AI SDK and Chat SDK ("fundamental"); it runs alongside the existing
+  Rust tonic/tonic-web mux in op-grpc-bridge ("tonic is not just for the ui,
+  it is like a mux for qdrant, cozo, http > grpc"), which carries the
+  Chat_Link to the browser (Requirement 32). (D) EMQX is squeezed out of the
+  chat path ("the design has proven the extraneous components get squeezed
+  out automatically"); Plugin_Feeds are read locally by the Chat_Route and
+  streamed over the Chat_Link, and "all feeds are subject to gating if you
+  are not supposed to see the feed" (Requirements 23 to 28). (E) The chatbot
+  renders the interface on the fly after the shell loads, and new Catalog
+  elements may be compiled at runtime (Requirement 33). Requirement 5.6 is
+  amended for Plugin_Feeds.
+- Jev evidence on plugin feeds (2026-11-08, `records/jev-log.jsonl`; evidence,
+  not authority; confidence below 0.6 is inconclusive): a browser-only
+  credential check does not satisfy Requirement 5.6 (noul 0.05); the
+  preferred fix is to route feed frames through a server-side Secret_Guard
+  (choice `route_through_chat_route`, p 0.77, confidence 0.69; runner-up
+  `server_guard_in_bridge`, p 0.22; amending 5.6 to allow a browser-only
+  check, p 0.00); each state message should carry the SHM generation and
+  catalog hash so receivers can detect staleness (noul 0.82); whether MQTT
+  becomes a second source of truth was inconclusive (noul 0.42) and the owner
+  settled it: it must not. The EMQX-specific parts of this evidence no longer
+  apply after decision (D); the server-side check of feed frames still does
+  (Requirement 28).
 
 ## Glossary
 
@@ -144,9 +184,11 @@ mounted namespace of the Bound_Identity.
   Chain_Verifier, the Secret_Guard and the Profile_Loader.
 - **Chat_UI**: The browser part of the Chat_Interface, built with SvelteKit,
   Svelte 5, Vite and the json-render Svelte renderer.
-- **Chat_Route**: The server-side handler that runs the Chat SDK and AI SDK
-  conversation loop (message stream, tool-call dispatch and Model_Provider
-  calls).
+- **Chat_Route**: The server-side TypeScript process that runs the Chat SDK
+  and AI SDK conversation loop (message stream, tool-call dispatch and Model_Provider
+  calls). It is a FUSE I/O route: it reaches op-dbus only by local file I/O
+  on the Operation_Files of the Bound_Identity's mounted 3tchedFS views, as
+  specified in Requirement 30.
 - **Chat_Session**: One conversation in the Chat_Interface, bound to exactly
   one Bound_Identity session for its whole lifetime.
 - **Public_Identity_Fields**: The non-secret fields of the
@@ -213,21 +255,85 @@ mounted namespace of the Bound_Identity.
 - **Synthetic_Fixture**: A test fixture marked synthetic in the way recorded
   in `design.md`, containing no value observed for a real Branch.
 - **Catalog**: The json-render catalog that declares every element type the
-  Chat_UI may render.
+  Chat_UI may render: the Implementer-authored elements, including every
+  Fixed_Element, and each Generated_Element registered under Requirement
+  33.1 and 33.2. A Generated_Element counts as a Catalog element only after
+  that registration.
 - **Component_Registry**: The json-render Svelte registry that implements each
-  Catalog element.
+  Catalog element, including each Generated_Element registered under
+  Requirement 33.1 and 33.2.
 - **Render_Spec**: A json-render element tree to be rendered by the Chat_UI,
   whether authored by the Implementer or produced by the model.
-- **Door_8090**: The existing `:8090` TLS door that serves the generic
-  `PluginService/CallMethod` gRPC-Web method.
+- **Door_8090**: The existing `:8090` TLS door of op-grpc-bridge, which serves
+  gRPC-Web (including the generic `PluginService/CallMethod` method). The
+  owner states that the Lungs_Socket and Door_8090 are the same door (owner,
+  2026-11-08: "lungs and door are the same"); `design.md` records how that one
+  door appears to the browser and to the Chat_Route.
 - **Op_Web_Connector**: The existing op-web same-origin connector, as named in
   `design.md`.
 - **Egress_Path**: An existing outbound-only network path, named explicitly in
   `design.md` per Deployment_Target, through which Model_Provider traffic
   leaves the system (the Cockpit_Spec term, applied here to model traffic).
 - **Pinned_Package_Set**: The exact npm package names and versions of the Chat
-  SDK, the AI SDK, the AI SDK Svelte binding, json-render and any Chat SDK
-  adapter, recorded in `design.md`.
+  SDK, the AI SDK, the AI SDK Svelte binding, json-render, any Chat SDK
+  adapter, the gRPC and gRPC-Web packages of the Chat_Link and the Svelte
+  compiler packages of Requirement 33, recorded in `design.md`.
+- **SHM_State**: The sealed public state of op-dbus plugins held in shared
+  memory, together with the sealed SHM blob catalog. SHM_State
+  is the single source of truth for plugin state; every Plugin_Feed is a
+  derived delivery projection of it. The 3tchedFS_Views are a runtime mirror
+  of the SHM blobs (owner, 2026-11-08: "the 3tchedfs is a runtime mirror of
+  the blobs in shm"), so a read through a mounted view is also a projection
+  of SHM_State and never a second source.
+- **SHM_Generation**: The generation number of the SHM_State snapshot from
+  which a Plugin_Feed message was read, in the form recorded in `design.md`.
+- **Plugin_Feed**: A Schema_Feed or a State_Feed of one sealed plugin in one
+  View_Kind for one Bound_Identity.
+- **Schema_Feed**: The Plugin_Feed that delivers the Sealed_Method_Schemas of
+  one plugin, filtered to the methods the receiving Bound_Identity is
+  entitled to see, as display data and change notification.
+- **State_Feed**: The Plugin_Feed that delivers the SHM_State of one plugin
+  to a Bound_Identity, as display data and change notification.
+- **Plugin_Feed_Message**: One message of a Plugin_Feed, carrying the
+  SHM_Generation and the sealed catalog hash it was read from.
+- **Feed_Reader**: The Chat_Route component that reads the schema and state
+  of one plugin locally through the Bound_Identity's mounted view of one
+  View_Kind (Requirement 30) and builds Plugin_Feed_Messages from it.
+- **Feed_Stream**: One server-streaming call of the Chat_Link that carries
+  the Schema_Feed and State_Feed of exactly one plugin in exactly one
+  View_Kind for one Chat_Session.
+- **Feed_Consumer**: The part of the Chat_UI that opens one Feed_Stream per
+  displayed plugin per View_Kind and displays Plugin_Feed_Messages.
+- **Tonic_Mux**: The existing Rust tonic/tonic-web multiplexer in
+  op-grpc-bridge on Door_8090, which serves gRPC-Web to the browser and
+  routes gRPC to local backends. It is pinned op-dbus code.
+- **Chat_Link**: The gRPC service defined by a protobuf file in the
+  Hackathon_Repository, served locally by the Chat_Route and carried to the
+  Chat_UI as gRPC-Web by the Tonic_Mux (Requirement 32).
+- **Mux_Hop**: The existing Lungs_Socket, used as the only local socket
+  between the Tonic_Mux and the Chat_Route (owner, 2026-11-08: "local socket
+  is lungs, should only be the one socket"). The Chat_Route connects to it as
+  a client and opens no listening socket of its own.
+- **Generated_Element**: A Catalog element type whose Svelte source is
+  produced by the model during a Chat_Session and compiled at runtime
+  (Requirement 33). It is staged in the `json_render_gallery` plugin and enters the
+  Catalog only when promoted from there.
+- **UI_Gallery**: The existing `json_render_gallery` plugin, the staging area
+  of the UI generator before elements are promoted to the Catalog (owner,
+  2026-11-08: "gallery is for the ui generator before elements get promoted
+  to catalog"). Its methods include `save_candidate`, `list_candidates`,
+  `get_candidate`, `delete_candidate`, `promote_candidate`, `list_catalog`,
+  `get_catalog_entry` and `retire_catalog_entry`. It is UI code, not chat
+  code, and is kept.
+- **Fixed_Element**: A Catalog element authored by the Implementer that
+  displays the Confirmation_Gate prompt, Tool_Call status, Denials, typed
+  errors or Public_Identity_Fields.
+- **Catalog_Hint**: A request from the Chat_UI to the Chat_Route that carries
+  no feed content and asks the Chat_Route to re-read the catalog pin of its
+  own mounted views.
+- **Feed_Credential_Check**: The server-side Secret_Guard check of each
+  Plugin_Feed_Message before any byte of it reaches the Chat_UI, at the
+  location recorded in `design.md` under Requirement 28.
 
 ## Requirements
 
@@ -263,8 +369,8 @@ hackathon work is reviewable on its own.
 2. THE Chat_Interface source SHALL reside only in the Hackathon_Repository.
 3. THE Chat_Interface source SHALL contain no file, module or import copied from or resolved into `/srv/git/3tched.com` or `/srv/git/odbus-verified`.
 4. THE Chat_Interface source SHALL contain no React, JSX, TSX or Next.js dependency, file or import.
-5. THE Chat_UI SHALL render only Render_Specs whose every element type is declared in the Catalog and implemented in the Component_Registry.
-6. IF a Render_Spec contains an element type absent from the Catalog or the Component_Registry, THEN THE Chat_UI SHALL refuse the whole Render_Spec and display a Catalog error naming the element type.
+5. THE Chat_UI SHALL render only Render_Specs whose every element type is declared in the Catalog and implemented in the Component_Registry, where a Generated_Element counts as declared and implemented only after its registration under Requirement 33.1 and 33.2.
+6. IF a Render_Spec contains an element type absent from the Catalog or the Component_Registry, including a Generated_Element not yet registered under Requirement 33.1 and 33.2, THEN THE Chat_UI SHALL refuse the whole Render_Spec and display a Catalog error naming the element type.
 7. THE Implementer SHALL provide a repository check that reports every Chat_UI visible element lacking a Catalog declaration or a Component_Registry implementation.
 
 ### Requirement 3: Chat SDK and AI SDK pinning
@@ -321,7 +427,7 @@ cannot leak any sealed identity.
 3. THE Chat_UI SHALL hold SID1 or OIA1 bytes only in the form, location and lifetime that the existing Door_8090 transport requires, as recorded in `design.md`.
 4. THE Chat_UI SHALL persist no Credential_Material to localStorage, sessionStorage, IndexedDB, cookies readable by script, URLs or the service worker cache.
 5. THE Secret_Guard SHALL classify an output item as containing Credential_Material when the item contains, in raw form or in any encoding that `design.md` lists for that Credential_Material class, any of: a complete Credential_Material value held by the Chat_Route, a contiguous substring of 16 or more bytes of such a value, or a SID1 or OIA1 envelope, including a value split across two or more consecutive stream chunks.
-6. WHEN the Secret_Guard detects Credential_Material in an outbound Model_Context, Chat_Route response or stream chunk to the Chat_UI, Render_Spec, log line, telemetry record, persisted server-side Chat_Session record or persisted client state, THE Secret_Guard SHALL block the whole output item on the server before any byte of it leaves the Chat_Route, independently of any check in the Chat_UI, keep the pending Tool_Calls of the Chat_Session unchanged, replace the item sent to the Chat_UI with an error indicating the blocked output channel, and record a security event that names the output channel, the Credential_Material class, the Chat_Session and the Bound_Identity display name and that contains no part of the detected value and no hash or digest computed over it.
+6. WHEN the Secret_Guard detects Credential_Material in an outbound Model_Context, Chat_Route response or stream chunk to the Chat_UI, Render_Spec, log line, telemetry record, persisted server-side Chat_Session record, persisted client state or Plugin_Feed_Message, THE Secret_Guard SHALL block the whole output item on the server before any byte of it leaves the Chat_Route (or, for a Plugin_Feed_Message, before any byte of it reaches the Chat_UI, through the Feed_Credential_Check of Requirement 28), independently of any check in the Chat_UI, keep the pending Tool_Calls of the Chat_Session unchanged, replace the item sent to the Chat_UI with an error indicating the blocked output channel, and record a security event that names the output channel, the Credential_Material class, the Chat_Session and the Bound_Identity display name and that contains no part of the detected value and no hash or digest computed over it.
 7. IF the Secret_Guard returns an error for an output item or returns no result within the check time limit recorded in `design.md`, THEN THE Chat_Route SHALL withhold that output item, return to the Chat_UI an error indicating that the credential check failed, and keep the pending Tool_Calls of the Chat_Session unchanged.
 8. IF a request from the Chat_UI to the Chat_Route contains Credential_Material in a chat message, Tool_Call argument or Confirmation_Event payload, outside the Door_8090 transport authentication that criterion 3 permits, THEN THE Chat_Route SHALL reject the whole request before it reaches the Model_Context_Builder, the Tool_Executor, any log line or any persisted state, return to the Chat_UI an error indicating that credential content was refused, keep the Chat_Session and its pending Tool_Calls unchanged, and have the Secret_Guard record a security event as specified in criterion 6.
 9. THE Hackathon_Repository SHALL contain no Credential_Material, and the repository check of Cockpit_Spec Requirement 8.5 SHALL cover the Chat_Interface source.
@@ -470,7 +576,7 @@ surface for any Branch.
 #### Acceptance Criteria
 
 1. THE Implementer SHALL record in `design.md`, for each Deployment_Target, the Chat_Route location (the Deployment_Target, the process that hosts the Chat_Route and the identity it runs under), the path from the Chat_UI to the Chat_Route, the path from the Chat_Route to the Tool_Executor, and the Egress_Path for Model_Provider calls, with each path entry naming every hop and the pre-existing component and owner that provides that hop.
-2. THE Chat_Interface SHALL add no new listening port or inbound network door on any Deployment_Target, such that the set of listening sockets recorded in the Runtime_Record for a Deployment_Target while the Chat_Interface runs is identical to the set recorded while the Chat_Interface is not running.
+2. THE Chat_Interface SHALL add no new listening port or inbound network door on any Deployment_Target, such that the set of listening sockets of every kind (TCP, UDP and Unix) recorded in the Runtime_Record for a Deployment_Target while the Chat_Interface runs is identical to the set recorded while the Chat_Interface is not running, and the Chat_Interface reaches the host only through the Lungs_Socket.
 3. WHERE the Deployment_Target is an Identity_Container, THE Chat_Interface SHALL reach the host from that Identity_Container only through the Lungs_Socket, as Cockpit_Spec Requirement 19.3 specifies for the Cockpit, and SHALL open no connection to Door_8090, the Op_Web_Connector or any other host address or host socket.
 4. WHERE the Deployment_Target is the Host_Dashboard, THE Chat_UI SHALL send every request to the Chat_Route through Door_8090 or the Op_Web_Connector and SHALL send no request to any other backend origin.
 5. IF no Chat_Route location for a Deployment_Target satisfies criteria 2, 3, 4 and 10 using only paths recorded in `design.md` as pre-existing, THEN THE Implementer SHALL create a Blocker_Record naming the Deployment_Target, each unsatisfied criterion and the paths examined, and SHALL leave the Chat_Route tasks for that Deployment_Target in proposed status until `design.md` records a location that satisfies those criteria.
@@ -538,9 +644,10 @@ disrupted.
 #### Acceptance Criteria
 
 1. THE Implementer SHALL apply Cockpit_Spec Requirement 20 to every Chat_Interface task that would perform a Live_Change, including deploying or running the Chat_Interface under any Branch (Requirement 4.12), deploying the Chat_UI or Chat_Route, and changing grants.
-2. THE Implementer SHALL run tests, linters, formatting checks and smoke fixtures for the Chat_Interface only on explicit owner request.
-3. WHEN a build is required, THE Implementer SHALL build only the Chat_Interface package and, for any Rust target, only the required scoped target for `x86_64-unknown-linux-gnu` under Cockpit_Spec Requirement 21.
-4. THE Implementer SHALL leave `/srv/git/odbus-verified`, `/srv/git/3tched.com`, `.kiro/steering/security-boundaries.md` and the Cockpit_Spec unmodified, except for the chat-code removal and the `ctl_plane_chatbot` coupling cut of Requirements 21 and 22, which steering `chat-clean-slate.md` records as the owner's exception.
+2. THE Implementer SHALL run tests, linters, type checks, formatting checks and smoke fixtures for the Chat_Interface only on explicit owner request and only after the Chat_Interface is deployed (steering `defer-tests-until-deployment.md`), writing test files before deployment without running them.
+3. WHEN a build is required, THE Implementer SHALL build only the Chat_Interface package and, for any Rust target, only the required scoped target for `x86_64-unknown-linux-gnu` under Cockpit_Spec Requirement 21, with at most one Cargo process running at a time and no workspace-wide Cargo command.
+5. THE Implementer SHALL write every Chat_Interface function as a complete implementation, with no stub, placeholder, dummy data, partial implementation or incomplete-work marker (steering `no-stubs-or-placeholders.md`).
+6. IF a task needs a component that is not ready, THEN THE Implementer SHALL record the blocker in the Runtime_Record or a Blocker_Record and leave the task in proposed status.
 
 ### Requirement 18: Status, provenance and commits
 
@@ -632,3 +739,201 @@ chat runs only through the new code.
 6. THE Implementer SHALL keep the control-plane chat plugin `ctl_plane_chatbot` and SHALL classify it in the Legacy_Chat_Inventory as kept and integrated, not as chat code to remove.
 7. THE Chat_Interface SHALL integrate `ctl_plane_chatbot` by deriving its methods into the Tool_Registry from the Bound_Identity's `3tched` view and calling them as Operation_File calls under Requirements 6 to 9, with no `ctl_plane_chatbot`-specific transport or bypass.
 8. THE Implementer SHALL keep `chat_router` and other threetched-backed services in place as threetched services (not chat code), record their `chat_*` and former `tched_router` names as naming defects, and remove the `chat_router` imports and references inside `ctl_plane_chatbot` (types, size limits and plugin id) so that 3tched code does not depend on a threetched service, keep every other `ctl_plane_chatbot` method and record field, and verify under Requirement 21.5 that `ctl_plane_chatbot` still builds, is sealed in the catalog and answers a granted read through the `3tched` view.
+
+### Requirement 23: Per-plugin Plugin_Feeds
+
+**User Story:** As the operator of any Branch, I want each plugin's schema and state delivered on its own stream, read locally from the mounted views, so that the Chat_UI shows each plugin separately and each feed is gated on its own (owner decisions 1 and D).
+
+#### Acceptance Criteria
+
+1. THE Feed_Reader SHALL read the schema and state of each plugin only by local file I/O on the Bound_Identity's mounted view of that plugin's View_Kind under Requirement 30.
+2. THE Chat_Route SHALL provide, for each plugin exposed in a mounted view of the Bound_Identity, at most one Schema_Feed and at most one State_Feed in that View_Kind, and SHALL provide no Plugin_Feed for any plugin absent from that view.
+3. THE Chat_Route SHALL carry the Plugin_Feeds of one plugin in one View_Kind on exactly one Feed_Stream, with each Plugin_Feed_Message naming its plugin, View_Kind and feed kind and containing content of that plugin only, so that no Feed_Stream mixes plugins or View_Kinds and no aggregate feed exists.
+4. THE Feed_Reader SHALL read the Plugin_Feeds of each plugin only through the view of the View_Kind that runs that plugin, as recorded in its Tool_Registry entries under Requirement 6.12.
+5. IF a plugin id is exactly `tched_router` or `tched-router`, contains `zeroclaw` in any letter case, or appears in a view whose View_Kind contradicts what runs it (Requirement 6.13), THEN THE Chat_Route SHALL provide no Plugin_Feed for that plugin, and THE Implementer SHALL record the plugin as a naming defect as specified in Cockpit_Spec Requirement 25.4.
+6. WHEN the Chat_UI displays the plugins of a Bound_Identity, THE Feed_Consumer SHALL open exactly one Feed_Stream per displayed plugin per View_Kind, taking each plugin and View_Kind only from the plugin list that the Chat_Route reads through the Bound_Identity's mounted views, and from no operator input, model output, tool result or request parameter.
+7. IF a Plugin_Feed_Message received on a Feed_Stream names a plugin or View_Kind different from that Feed_Stream's plugin or View_Kind, THEN THE Feed_Consumer SHALL display no part of that message, SHALL end that Feed_Stream, SHALL not reopen it during the current Chat_UI session, and SHALL display an indication that the feed of that plugin has ended.
+8. FOR ALL Feed_Streams of a Chat_Session, every Plugin_Feed_Message carried on the Feed_Stream of a (plugin id, View_Kind) pair SHALL name that same plugin id and View_Kind (separation invariant).
+9. WHEN a catalog pin re-read under Requirement 6.5 shows that a plugin was removed from a view, THE Chat_Route SHALL end that plugin's Feed_Stream for that View_Kind and SHALL send no Plugin_Feed_Message carrying the new sealed catalog hash for that plugin.
+10. IF the Chat_Route cannot read the plugin list of a mounted view, THEN THE Feed_Consumer SHALL open no Feed_Stream for that View_Kind and SHALL display an indication that the feeds of that View_Kind are unavailable.
+11. IF a Plugin_Feed_Message received on a Feed_Stream carries an SHM_Generation lower than or equal to the SHM_Generation of the last message displayed from that Feed_Stream under the same sealed catalog hash and feed kind, THEN THE Feed_Consumer SHALL display no part of that message and SHALL keep displaying the last displayed message.
+
+### Requirement 24: SHM_State as the single source of truth
+
+**User Story:** As the owner, I want every State_Feed read from the SHM mirror and marked with the generation it was read from, so that the Chat_Link stream stays a projection of SHM_State and never becomes a second source of truth (owner decisions 6 and A).
+
+#### Acceptance Criteria
+
+1. THE Feed_Reader SHALL read State_Feed content only through the Bound_Identity's mounted views as a projection of SHM_State, and SHALL take no State_Feed value from a buffer of earlier messages, the Chat_UI or any other Plugin_Feed_Message.
+2. THE Feed_Reader SHALL include in every Plugin_Feed_Message the SHM_Generation and the sealed catalog hash of the single SHM_State snapshot and sealed catalog from which the whole message was read.
+3. THE Feed_Reader, THE Chat_Route and THE Feed_Consumer SHALL treat SHM_State as read-only, so that no Plugin_Feed_Message, Feed_Stream, gating decision or parse failure creates, writes, corrects or deletes an SHM_State entry.
+4. WHEN the SHM_Generation of a plugin, as read through the mounted view, advances, THE Chat_Route SHALL send on that plugin's open Feed_Stream, within the publication bound recorded in `design.md`, a State_Feed message read at that SHM_Generation or at a later SHM_Generation of the same plugin.
+5. IF the last State_Feed message sent on a Feed_Stream carries a value or an SHM_Generation that differs from the plugin's current state read through the mounted view, THEN THE Chat_Route SHALL send, within the publication bound recorded in `design.md`, a State_Feed message read from the current state, so that SHM_State wins.
+6. IF a State_Feed message's SHM_Generation equals the current SHM_Generation for that plugin known to the Chat_UI from the source recorded in `design.md`, and its sealed catalog hash equals the current sealed catalog hash known to the Chat_UI, THEN THE Feed_Consumer SHALL display that value as current; in every other case THE Feed_Consumer SHALL NOT display it as current.
+7. IF a State_Feed message carries an SHM_Generation lower than the current SHM_Generation known to the Chat_UI for that plugin, carries a sealed catalog hash different from the current sealed catalog hash, carries no SHM_Generation or no sealed catalog hash, or the current SHM_Generation for that plugin cannot be obtained from the source recorded in `design.md`, THEN THE Feed_Consumer SHALL display that value marked stale.
+8. IF an Authoritative_State read back by the Tool_Executor through the Bound_Identity's mount differs from a State_Feed value displayed for the same plugin, THEN THE Chat_UI SHALL display the Authoritative_State as the operation result and mark the State_Feed value stale until a State_Feed message for that plugin satisfies criterion 6.
+9. THE Chat_Route SHALL treat no Plugin_Feed_Message as a Receipt or as Authoritative_State for Requirements 8.5 and 11.1, including a Plugin_Feed_Message whose value equals the expected result.
+10. IF a Plugin_Feed_Message received by the Feed_Consumer does not parse according to the message format recorded in `design.md`, THEN THE Feed_Consumer SHALL display no part of that message, SHALL show a schema error naming the plugin, and SHALL keep any previously displayed value of that plugin marked stale.
+11. FOR ALL SHM_State values of a plugin, encoding the value into a State_Feed message as recorded in `design.md` and then parsing the message SHALL produce a value equal to the original SHM_State value, together with the same SHM_Generation and sealed catalog hash (round-trip property).
+12. FOR ALL sequences of SHM_State snapshots and State_Feed messages in any arrival order, including duplicated, reordered and missing messages, each State_Feed value that the Feed_Consumer displays as current SHALL equal the SHM_State value at the SHM_Generation it carries (model property).
+13. IF the Feed_Reader cannot read a plugin's state or the sealed catalog through the mounted view, THEN THE Chat_Route SHALL send no State_Feed value for that plugin, SHALL send no default, empty or reconstructed value, and SHALL record the read failure with the plugin name.
+14. FOR ALL sequences of State_Feed messages that the Chat_Route sends on one Feed_Stream, the SHM_Generation SHALL never decrease from one message to the next (monotonic property).
+15. IF the Feed_Stream of a plugin closes or reports an error, THEN THE Feed_Consumer SHALL mark every displayed State_Feed value of that plugin stale until a State_Feed message received on a newly opened Feed_Stream satisfies criterion 6.
+16. THE Chat_Route SHALL treat every schema, catalog pin and state value read through the Bound_Identity's mounted 3tchedFS_Views as a projection of SHM_State, and SHALL write, correct or cache-override no SHM_State entry through those views except through Operation_File calls of Requirement 30.
+17. THE Chat_Route SHALL provide the Chat_UI with the current SHM_Generation and sealed catalog hash of each plugin as read through the Bound_Identity's mounted views, and THE Feed_Consumer SHALL use that value as the source of criteria 6 and 7.
+18. IF a State_Feed value and the value read through the mounted view carry the same SHM_Generation and sealed catalog hash but differ, THEN THE Chat_UI SHALL display the value read through the mounted view, mark the State_Feed value stale, and THE Chat_Route SHALL create a Blocker_Record naming the plugin and the SHM_Generation.
+19. FOR ALL plugins and SHM_Generations, the State_Feed value and the value read through the mounted view at the same SHM_Generation and sealed catalog hash SHALL be equal (consistency property).
+
+### Requirement 25: Gating of every Plugin_Feed
+
+**User Story:** As the owner, I want every feed gated by what the Bound_Identity's own mounted views expose and by its Held_Capability_Set, so that nobody sees a feed or a method schema they are not entitled to see (owner, 2026-11-08: "all feeds are subject to gating if you are not supposed to see the feed").
+
+#### Acceptance Criteria
+
+1. THE Chat_Route SHALL build each Schema_Feed message only from the Sealed_Method_Schemas that the Bound_Identity's own mounted view exposes, including exactly those whose Required_Capability is in the Held_Capability_Set read for that Chat_Session and zero others.
+2. THE Chat_Route SHALL send a State_Feed of a plugin only while the Bound_Identity's mounted view exposes that plugin's state and the Held_Capability_Set contains the state-read capability that `design.md` records for that plugin.
+3. THE Chat_Route SHALL take every gating input only from the Bound_Identity's mounted views and Held_Capability_Set, and SHALL ignore every grant, capability, identity, plugin or entitlement value supplied by the Chat_UI, the model, a tool result, the Identity_Profile, a request parameter or a Plugin_Feed_Message.
+4. IF a feed read through the mounted view returns a Denial, or the capability that criterion 1 or 2 requires is absent from or undetermined in the Held_Capability_Set, THEN THE Chat_Route SHALL send zero Plugin_Feed_Messages of that Plugin_Feed, SHALL end its Feed_Stream with a Denial, and SHALL create exactly one Blocker_Record with the operation, caller, missing capability or policy and error, with Credential_Material excluded.
+5. IF the gating check returns an error, returns no result within the gate time limit recorded in `design.md`, or cannot parse the Held_Capability_Set, THEN THE Chat_Route SHALL deny the Plugin_Feed (fail closed) and send zero Plugin_Feed_Messages of it.
+6. WHEN a Plugin_Feed is denied in a Chat_Session, THE Chat_Route SHALL make zero further reads for that Plugin_Feed through another identity, view, mount or transport, and THE Feed_Consumer SHALL make zero further Feed_Stream attempts for that plugin and View_Kind in that Chat_Session.
+7. WHEN the Chat_Route ends a Feed_Stream with a Denial, THE Feed_Consumer SHALL display the Denial with the plugin, the View_Kind, the missing capability or policy as returned (or a marker stating it was not returned) and the error text.
+8. WHILE a Feed_Stream is open, THE Chat_Route SHALL re-read the Held_Capability_Set and `identity_sled.get_own_identity` through the Bound_Identity's mounted views at an interval no longer than the revocation bound recorded in `design.md`.
+9. WHEN a grant of the Bound_Identity is revoked or its identity record is tombstoned, THE Chat_Route SHALL stop sending, within the revocation bound recorded in `design.md`, every Plugin_Feed_Message that the remaining grants do not entitle the Bound_Identity to see, and SHALL end the affected Feed_Streams with a Denial.
+10. WHEN delivery of a Plugin_Feed stops under criterion 9, THE Feed_Consumer SHALL stop displaying that Plugin_Feed's data within the revocation bound recorded in `design.md` and SHALL display the Denial as in criterion 7.
+11. IF a Feed_Stream request names a plugin absent from the Bound_Identity's mounted view of the requested View_Kind, or a View_Kind that does not run that plugin, THEN THE Chat_Route SHALL deny the Feed_Stream.
+12. WHILE `design.md` records no revocation bound, no gate time limit or no state-read capability for a plugin, THE Implementer SHALL leave every task that opens a Plugin_Feed of the affected plugins in proposed status.
+13. FOR ALL Bound_Identities, Held_Capability_Sets, mounted views and Feed_Stream requests, the set of method schemas delivered to a Bound_Identity SHALL be a subset of the methods whose Required_Capability that Bound_Identity holds, and State_Feeds SHALL be delivered only for plugins whose recorded state-read capability that Bound_Identity holds (invariant).
+
+### Requirement 26: Plugin_Feed delivery over the Chat_Link
+
+**User Story:** As the owner, I want feeds delivered to the browser only over the Chat_Link, so that feeds add no network door and no second gate (owner decisions 4 and D).
+
+#### Acceptance Criteria
+
+1. THE Chat_Route SHALL deliver Plugin_Feed_Messages to the Chat_UI only over the gRPC (tonic-web) link of Requirement 32, after reading the plugin schema and state locally through the Bound_Identity's mounted views under Requirement 30 and checking each message under Requirement 28 (owner, 2026-11-08: "grpc, yes tonic-web").
+2. THE Feed_Consumer SHALL open each Feed_Stream only as a server-streaming call of the Chat_Link, holding at most one open Feed_Stream per plugin per View_Kind per Chat_Session, and SHALL use no client-streaming or bidirectional call.
+3. THE Chat_Route SHALL send on each Feed_Stream exactly the Plugin_Feed_Messages that passed Requirements 25 and 28, each unchanged in content, SHM_Generation and sealed catalog hash, in the order the Feed_Reader read them.
+4. THE Chat_UI SHALL open no connection to an EMQX or MQTT listener, to `127.0.0.1:9000` or to any origin other than the Chat_Link origin of Requirement 32 to receive Plugin_Feeds.
+5. THE Plugin_Feed delivery SHALL add no listening port or inbound network door on any Deployment_Target, so that the set of listening sockets recorded in the Runtime_Record with Plugin_Feeds active is identical to the set recorded with Plugin_Feeds inactive.
+6. WHERE the Deployment_Target is an Identity_Container, THE Chat_Route SHALL read Plugin_Feeds only from that Identity_Container's own mounted views and SHALL deliver them only over the Chat_Link path that `design.md` records for that Deployment_Target, using the Lungs_Socket as the only host channel and attaching no Incus proxy device.
+7. IF `design.md` records no Chat_Link path for an Identity_Container, THEN THE Implementer SHALL create a Blocker_Record naming the Deployment_Target and leave every Plugin_Feed task for Identity_Containers in proposed status, and THE Chat_Route of that Identity_Container SHALL use only the catalog pin checks of Requirement 6.5 read through its mounted views.
+8. WHEN a Feed_Stream ends with a Denial, or with status `PERMISSION_DENIED` or `UNAUTHENTICATED`, THE Feed_Consumer SHALL handle the end as a Denial under Requirement 25.6 and 25.7, clear the displayed schema and state of that plugin before rendering any further update for it, and SHALL not re-open that Feed_Stream in that Chat_Session.
+9. IF a Feed_Stream ends for a reason other than a Denial, THEN THE Feed_Consumer SHALL re-open the same Feed_Stream through the same Chat_Link call at most once per re-open interval recorded in `design.md`, which SHALL be at least 10 seconds and at most 300 seconds, and SHALL make at most 5 consecutive re-open attempts that deliver no Plugin_Feed_Message, after which it SHALL stop re-opening and display an error stating that the feed of that plugin is disconnected.
+10. IF the Door_8090 credential verification of a Feed_Stream fails, THEN THE Feed_Consumer SHALL display no Plugin_Feed_Message of that Feed_Stream and SHALL handle the end under criterion 8.
+11. IF a Plugin_Feed_Message received on a Feed_Stream names a plugin other than the plugin of that Feed_Stream, or carries a sealed catalog hash different from the hash the Chat_UI last pinned under Requirement 6.5, THEN THE Feed_Consumer SHALL discard that message, leave the displayed state of the plugin unchanged, and display a feed error naming the plugin and the mismatch.
+12. WHILE no Feed_Stream of a plugin is open, THE Feed_Consumer SHALL mark the displayed state of that plugin as not live, showing the SHM_Generation and receipt time of the last Plugin_Feed_Message displayed for it.
+
+### Requirement 27: Plugin_Feeds carry no authority
+
+**User Story:** As the owner, I want feed messages to be display data and change notifications only, so that a feed can never offer a tool, widen a capability or skip a check.
+
+#### Acceptance Criteria
+
+1. THE Tool_Registry SHALL derive tool definitions only from the Sealed_Method_Schemas exposed in the Bound_Identity's mounted views under Requirement 6.1, and SHALL take no input from any Plugin_Feed_Message or Catalog_Hint, including any plugin id, method name, argument schema, Required_Capability or catalog hash that the message or hint contains.
+2. WHEN the Chat_Route receives a Plugin_Feed_Message or a Catalog_Hint, THE Chat_Route SHALL keep the Held_Capability_Set, every offered or unavailable marking, every argument schema, every Confirmation_Gate record and every Model_Context unchanged, except for changes made by a Tool_Registry re-derivation under Requirement 6.5 that criterion 5 starts because the re-read catalog pin changed.
+3. THE Chat_Route SHALL apply the Offered_Tool check, the Schema_Validator and the Confirmation_Gate of Requirements 8 and 9 to every Tool_Call, whether or not any Plugin_Feed_Message or Catalog_Hint was received before or during that Tool_Call.
+4. WHEN the Feed_Consumer receives a Plugin_Feed_Message whose sealed catalog hash or SHM_Generation differs from the last value it displayed for that View_Kind, or is the first Plugin_Feed_Message it has displayed for that View_Kind in the Chat_Session, THE Feed_Consumer SHALL send exactly one Catalog_Hint to the Chat_Route for that changed value, containing no field other than its type and no content of the Plugin_Feed_Message.
+5. WHEN the Chat_Route receives a Catalog_Hint for a Chat_Session, THE Chat_Route SHALL discard every field of it other than its type, re-read the catalog pin of the mounted views of that Chat_Session's own Bound_Identity only, and apply Requirement 6.5 only if the re-read pin differs from the pin of the last Tool_Registry derivation.
+6. IF the catalog pin re-read under criterion 5 equals the pin of the last Tool_Registry derivation, THEN THE Chat_Route SHALL leave the Tool_Registry, the Offered_Tools, the Unavailable_Tools and every pending Tool_Call unchanged.
+7. IF the Chat_Route receives more Catalog_Hints for a Chat_Session than the rate limit recorded in `design.md` within the time window recorded with that limit, THEN THE Chat_Route SHALL discard each excess Catalog_Hint without re-reading the catalog pin, leave the Tool_Registry and every pending Tool_Call unchanged, and keep the catalog pin check that Requirement 6.5 runs before each Model_Provider request and each Operation_File call.
+8. FOR ALL sequences of Plugin_Feed_Messages and Catalog_Hints in a Chat_Session, the Tool_Registry snapshot, the Offered_Tools, the Schema_Validator results and the Confirmation_Gate state SHALL equal those of the same Chat_Session without Plugin_Feeds, unless the catalog pin read through the Bound_Identity's own mounted views changed (invariant).
+9. IF the catalog pin re-read under criterion 5 fails because the mounted view returns an error, returns an unparseable value or returns no value within the read time limit recorded in `design.md`, THEN THE Chat_Route SHALL leave the Tool_Registry, the Offered_Tools and every pending Tool_Call unchanged, take no pin value from the Catalog_Hint or any Plugin_Feed_Message, and return to the Chat_UI an error indicating that the catalog pin could not be re-read.
+10. IF a Plugin_Feed_Message received by the Feed_Consumer lacks a sealed catalog hash or an SHM_Generation, THEN THE Feed_Consumer SHALL send no Catalog_Hint for that message and SHALL keep the last displayed catalog hash and SHM_Generation for that View_Kind unchanged.
+11. IF the Chat_Route receives a Catalog_Hint that names no open Chat_Session or names a Chat_Session not bound to the Bound_Identity of the requesting Chat_UI, THEN THE Chat_Route SHALL discard the Catalog_Hint without re-reading any catalog pin and leave every Chat_Session's Tool_Registry and pending Tool_Calls unchanged.
+
+### Requirement 28: Server-side credential check of Plugin_Feed_Messages
+
+**User Story:** As the owner, I want every feed frame checked by the server-side Secret_Guard before it reaches the browser, so that feeds meet Requirement 5.6 like every other output (owner decision 5; Jev evidence: a browser-only check does not satisfy 5.6).
+
+#### Acceptance Criteria
+
+1. WHEN a Plugin_Feed_Message is to be delivered to the Chat_UI, THE Feed_Credential_Check SHALL classify the whole message under the rules of Requirement 5.5 on the server side, covering every field of the message (including its payload, SHM_Generation, sealed catalog hash, plugin id, View_Kind and feed kind), before any byte of the message reaches the Chat_UI.
+2. IF the Feed_Credential_Check detects Credential_Material in a Plugin_Feed_Message, THEN THE Feed_Credential_Check SHALL block the whole message, end that stream as blocked, deliver to the Feed_Consumer in its place an error indicating the blocked feed and naming the plugin, keep every other open Plugin_Feed stream and the pending Tool_Calls of the Chat_Session unchanged, and record a security event as specified in Requirement 5.6, containing no part of the detected value and no hash or digest computed over it.
+3. IF the Feed_Credential_Check returns an error or returns no result within the check time limit recorded in `design.md` under Requirement 5.7, THEN THE Feed_Credential_Check SHALL withhold the message, end that stream as blocked (fail closed), deliver to the Feed_Consumer an error indicating that the feed credential check failed and naming the plugin, and keep every other open Plugin_Feed stream and the pending Tool_Calls of the Chat_Session unchanged.
+4. WHERE the Chat_UI runs a browser-side feed check, THE Feed_Consumer SHALL run that check in addition to the Feed_Credential_Check, SHALL display only messages that passed both checks, and SHALL display no part of a message that failed the browser-side check.
+5. THE Feed_Credential_Check SHALL run locally in the Chat_Route process on the bytes read from the Bound_Identity's mounted views, so that the host and an Identity_Container check the same files in the same way (owner, 2026-11-08: "server-side is same as container side, they read same files so locally is always better"), and THE Implementer SHALL record this location in `design.md` together with the Jev evidence of `records/jev-log.jsonl`.
+6. IF the recorded Feed_Credential_Check location requires a change to pinned op-dbus, THEN THE Implementer SHALL leave every task that builds or enables that check in proposed status until `design.md` records an Owner_Authorization naming that change.
+7. WHILE `design.md` records no Feed_Credential_Check location, or the recorded location is not yet built and authorized, THE Feed_Consumer SHALL open no Plugin_Feed stream and SHALL display, in place of each Plugin_Feed, a notice indicating that the feed is unavailable until the Feed_Credential_Check is in place.
+8. WHEN the Chat_Route receives a Catalog_Hint, THE Chat_Route SHALL check it under Requirement 5.8 before any field of it reaches a Blocker_Record, log line or persisted state.
+9. IF a Catalog_Hint contains Credential_Material under Requirement 5.5, THEN THE Chat_Route SHALL reject the whole hint, write no field of it to a Blocker_Record, log line or persisted state, perform no catalog pin re-read for it, return to the Chat_UI an error indicating that credential content was refused, and have the Secret_Guard record a security event as specified in Requirement 5.6.
+10. THE Feed_Consumer SHALL open Plugin_Feed streams only through the Feed_Credential_Check location recorded in `design.md`, and THE Chat_Interface SHALL contain no path by which a Plugin_Feed_Message reaches the Chat_UI without passing the Feed_Credential_Check.
+11. FOR ALL Plugin_Feed_Messages that contain Credential_Material under Requirement 5.5 in any field and in any encoding listed in `design.md`, no byte of the message SHALL reach the Chat_UI (invariant).
+
+### Requirement 29: EMQX approval recorded, EMQX not used
+
+**User Story:** As the owner, I want the 2026-11-08 EMQX approval kept on record and EMQX kept off the chat path, so that the decision history stays visible and the Chat_Interface has no EMQX dependency (owner decision D).
+
+#### Acceptance Criteria
+
+1. THE Implementer SHALL record in `design.md` that the Owner_Authorization of 2026-11-08 approving EMQX exists, quoting the owner's inputs verbatim, together with the later owner decision of 2026-11-08 that the Chat_Interface does not use EMQX.
+2. THE Chat_Interface SHALL open zero EMQX, MQTT or EMQX ExHook connections, including zero connections to `127.0.0.1:9000`.
+
+### Requirement 30: Local FUSE file I/O for every op-dbus call
+
+**User Story:** As the owner, I want the Chat_Route and the identity check to reach op-dbus only by local file I/O on the mounted 3tchedFS views, so that every call is identity-bound by the FUSE mount and no other transport exists.
+
+#### Acceptance Criteria
+
+1. THE Chat_Route SHALL make every op-dbus call of the Chat_Interface, including the `identity_sled.get_own_identity` binding of Requirement 4.1, every identity re-check of Requirements 4.5 and 4.13, every Tool_Call, every read-back, every Execution_Record read, every catalog pin read and every schema discovery, as local file I/O on Operation_Files of the Bound_Identity's mounted views (`/run/mounts/3tchedFS` for the `3tched` View_Kind and `/run/mounts/threetched` for the `threetched` View_Kind).
+2. THE Chat_Route SHALL make no op-dbus call through a network socket, a gRPC or gRPC-Web channel, Door_8090, a direct Lungs_Socket connection, D-Bus, a child process or any transport other than file I/O on the mounted views.
+3. THE Chat_Route SHALL perform each call on the mounted view of the View_Kind recorded for the called operation, and SHALL never perform a call of one View_Kind through the other view.
+4. THE Chat_Route SHALL discover method arguments, results, errors and the catalog pin only from files in the mounted views, and SHALL take none of them from the Chat_UI, the model, a tool result or a Plugin_Feed_Message.
+5. THE Chat_Route SHALL rely on the kernel-bound caller identity of the FUSE mount for every call and SHALL write no SID1, OIA1 or session credential into any Operation_File.
+6. IF a mounted view is absent, unreadable or reports a mount identity different from the one observed at Chat_Session start, THEN THE Chat_Route SHALL return a missing-mount typed error, create a Blocker_Record, and make no call for that view through any other path, view, identity or transport.
+7. IF an Operation_File call returns an error file, a denial or no result within the read timeout recorded in `design.md`, THEN THE Chat_Route SHALL handle it under Requirements 7 and 8.6 and SHALL make no retry through another path.
+8. THE Implementer SHALL record in `design.md` the Operation_File I/O sequence (files opened, write and read order, result and error files, completion signal) as read from the pinned 3tchedFS source, citing path and pinned commit, without copying pinned code into the Hackathon_Repository.
+
+### Requirement 31: FUSE-first path selection
+
+**User Story:** As the owner, I want every interaction that can go through the mounted 3tchedFS views to go through them, so that the chat uses one local, identity-bound path wherever possible (owner, 2026-11-08: "if it is possible to go through fuse it should").
+
+#### Acceptance Criteria
+
+1. WHERE an interaction of the Chat_Interface can be carried by local file I/O on the Bound_Identity's mounted views, THE Chat_Interface SHALL carry it by that file I/O and SHALL use no other transport for it.
+2. THE Secret_Guard and the Feed_Credential_Check SHALL run locally in the Chat_Route process on the bytes read from the mounted views, with the same rules on the host and in an Identity_Container.
+3. THE Implementer SHALL record in `design.md`, for each interaction that is not carried by file I/O on the mounted views (for example the link between the Chat_UI browser and the Chat_Route), the reason file I/O cannot carry it and the pre-existing path used instead.
+4. IF `design.md` records no reason under criterion 3 for an interaction that does not use file I/O on the mounted views, THEN THE Implementer SHALL leave every task implementing that interaction in proposed status.
+
+### Requirement 32: Browser-to-Chat_Route link through the existing tonic-web mux
+
+**User Story:** As the owner, I want the Chat_UI to reach the TypeScript Chat_Route through the existing tonic-web mux on Door_8090, so that the one link that cannot use FUSE file I/O uses the existing gRPC stack while the Chat_Route keeps the Vercel AI SDK and Chat SDK (owner, 2026-11-08: "browser to chat should be tonic web"; "tonic is not just for the ui, it is like a mux for qdrant, cozo, http > grpc").
+
+#### Acceptance Criteria
+
+1. THE Chat_Route SHALL be a TypeScript process that runs the conversation loop with the AI SDK and the Chat SDK entries of the Pinned_Package_Set, alongside the Tonic_Mux.
+2. THE Chat_Route SHALL serve the Chat_Link locally as gRPC, with every Chat_Link message defined in a protobuf file in the Hackathon_Repository.
+3. THE Chat_UI SHALL reach the Chat_Link only as gRPC-Web carried by the Tonic_Mux on Door_8090, and SHALL send every turn, decision, re-verify and Catalog_Hint request, and receive every model text, Tool_Call status, typed error, session item, Render_Spec, Generated_Element and Plugin_Feed_Message, only over the Chat_Link.
+4. THE Chat_UI and THE Chat_Route SHALL use only unary and server-streaming Chat_Link calls, and SHALL use no client-streaming or bidirectional call.
+5. THE Chat_Route SHALL carry each AI SDK UI message stream chunk (text, tool and data parts) unchanged inside Chat_Link server-stream frames, and THE Chat_UI SHALL pass the chunks to the AI SDK Svelte binding in arrival order, with the protocol version check of Requirement 3.8 applying to both ends.
+6. FOR ALL sequences of AI SDK UI message stream chunks, encoding the sequence into Chat_Link frames and then decoding the frames SHALL produce a sequence equal to the original in content and order (round-trip property).
+7. THE Implementer SHALL record in `design.md` the Mux_Hop (endpoint kind, path, owner, permissions and the process identities on each side) and, as the Requirement 31.3 entry for this link, that a browser cannot perform file I/O on the mounted views and that the Chat_Link through the Tonic_Mux is the path used.
+8. THE Chat_Route SHALL reach the Tonic_Mux only through the Lungs_Socket, connecting to it as a client, and SHALL open no listening socket of any kind (TCP, UDP or Unix), so that the Lungs_Socket stays the only local socket of the Chat_Link.
+9. IF connecting the Tonic_Mux to the Mux_Hop requires a change to pinned op-dbus source, configuration or deployment, THEN THE Implementer SHALL leave every task that implements that connection in proposed status until `design.md` records a separate, dated Owner_Authorization naming that change, and SHALL treat its deployment as a Live_Change under Requirement 17.1.
+10. THE Chat_Route SHALL pass every item it sends over the Chat_Link through the Secret_Guard under Requirement 5.6 before any byte of it is written to a Chat_Link frame.
+11. THE Chat_Route SHALL take the Chat_Session and Bound_Identity of each Chat_Link request only from its server-side session table under Requirement 4.2, and SHALL take no identity, session or principal value from the request body or its metadata.
+12. IF the Mux_Hop is absent or refuses the Tonic_Mux connection, THEN THE Chat_UI SHALL display the typed transport error of Requirement 15.7 naming the Chat_Link path, and THE Chat_Interface SHALL send no request through any other path.
+
+### Requirement 33: Generated UI elements at runtime
+
+**User Story:** As the operator of any Branch, I want the chatbot to render the interface after the shell loads and to add new elements on the fly, so that the UI can be built in conversation without weakening confirmation, credential or display-authority rules (owner decision E).
+
+#### Acceptance Criteria
+
+1. THE Chat_Interface SHALL register a Generated_Element in the Catalog and the Component_Registry only after its Svelte source compiles, the server-side Secret_Guard check of its source and compiled output passes, and the static checks of criterion 7 pass on its compiled output.
+2. THE Confirmation_Gate SHALL hold each Generated_Element registration as a Mutation_Method-class action under Requirement 9, with the digest computed over the compiled output, and THE Chat_Interface SHALL register the Generated_Element only after an accepted Confirmation_Event for that digest.
+3. WHEN the Chat_UI shell has loaded, THE Chat_UI SHALL render the rest of the interface from Render_Specs streamed by the Chat_Route over the Chat_Link through the json-render Svelte renderer.
+4. THE Chat_UI SHALL render each Fixed_Element only from its Implementer-authored Component_Registry entry, in a display region that no Generated_Element occupies, so that no Generated_Element replaces, imitates or overlays a Fixed_Element.
+5. THE Chat_Interface SHALL stage a Generated_Element only by calling `json_render_gallery.save_candidate`, and SHALL register it in the Catalog only by calling `json_render_gallery.promote_candidate`, each as an Operation_File call in the Bound_Identity's `3tched` mounted view under Requirement 30 and each held by the Confirmation_Gate as a Mutation_Method under Requirement 9.
+6. WHERE `design.md` records no other Session_Mode for Generated_Element registration, THE Chat_Route SHALL accept a Generated_Element registration only in a Chat_Session whose Session_Mode is ui_build.
+7. THE static checks SHALL reject compiled output that opens network access, uses eval, the Function constructor, string timers or dynamic import, imports any module other than Catalog primitives, reads any input other than its own props, accesses the document, window, global object, storage, cookies or any DOM node outside its own element root, declares a Fixed_Element type name, renders approve or reject controls, or uses fixed, sticky or overlay positioning.
+8. THE Chat_Route SHALL run the Secret_Guard check and the static checks of criterion 7 itself on the compiled output, and SHALL accept no check result supplied by the Chat_UI, the model or a tool result.
+9. THE Chat_Route SHALL compile every Generated_Element with the Svelte compiler (`svelte/compiler`) in the Chat_Route process (owner, 2026-11-08), and THE Implementer SHALL record in `design.md` the compiler package entry in the Pinned_Package_Set, the static check rules and the Operation_File method of criterion 5, and SHALL leave every Generated_Element task in proposed status while any of these is absent.
+10. IF compilation fails, the Secret_Guard blocks, a static check rejects, the registration request arrives in a Session_Mode that criterion 6 does not allow, or the Confirmation_Gate discards the registration, THEN THE Chat_Route SHALL register nothing, SHALL return a typed error of kind validation naming the failing check, and THE Chat_UI SHALL refuse every Render_Spec that uses that element type under Requirement 2.6.
+11. IF the Bound_Identity does not hold the Required_Capability of `save_candidate` or `promote_candidate`, or either call returns a Denial, THEN THE Chat_Interface SHALL stage or register nothing and SHALL create a Blocker_Record as Requirement 7 specifies.
+12. THE Chat_Interface SHALL key each registered Generated_Element by the Bound_Identity principal id under Requirement 20.1 and SHALL render it only in Chat_Sessions of that Bound_Identity.
+13. FOR ALL event sequences, every Generated_Element present in the Catalog SHALL have passed criterion 1 and SHALL have an accepted Confirmation_Event under criterion 2 (invariant).
+14. THE Implementer SHALL record `json_render_gallery` in the Legacy_Chat_Inventory as kept UI code (owner classification of 2026-11-08), and SHALL list its `MODES` constant, which names chat modes, for owner review without changing it.
+15. THE UI_Gallery candidate and the Catalog entry SHALL use one element schema (owner, 2026-11-08: "gallery schema should be same as the catalog schema"), holding the same element content fields (name, description, json-render spec, Svelte source, compiled output, content hash and Cozo relations), so that the two differ only in lifecycle fields (staged, promoted, retired, with their ids, actors and timestamps).
+16. WHEN `json_render_gallery.promote_candidate` promotes a candidate, THE resulting Catalog entry SHALL carry element content byte-identical to the candidate's, so that what was approved is exactly what is registered.
+17. WHILE `json_render_gallery` at the pinned commit uses different content schemas for `Candidate` (`title`, `mode`, `prompt`, `spec`) and `CatalogEntry` (`name`, `description`, `spec`, `cozo_relations`), and neither carries Svelte source or compiled output, THE Implementer SHALL leave every task that stages or promotes a Generated_Element in proposed status until `design.md` records a separate, dated Owner_Authorization naming the `json_render_gallery` schema change, and SHALL make that change only in pinned op-dbus under that authorization.
+18. FOR ALL candidates promoted by `promote_candidate`, the element content of the Catalog entry SHALL equal the element content of the candidate (invariant).

@@ -1,0 +1,33 @@
+{
+  "name": "identity-chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "dev": "vite dev",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "ai": "7.0.165",
+    "@ai-sdk/svelte": "5.0.165",
+    "chat": "4.44.0",
+    "@chat-adapter/web": "4.44.0",
+    "@chat-adapter/state-memory": "4.44.0",
+    "@json-render/core": "0.22.0",
+    "@json-render/svelte": "0.22.0",
+    "zod": "4.6.7",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "svelte": "5.57.3",
+    "@sveltejs/kit": "3.1.1",
+    "vite": "8.3.6",
+    "typescript": "6.0.0",
+    "@sveltejs/vite-plugin-svelte": "7.0.0",
+    "@types/node": "22.1.0",
+    "fast-check": "4.10.2"
+  }
+}

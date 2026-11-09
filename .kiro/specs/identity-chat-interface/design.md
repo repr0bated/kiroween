@@ -29,6 +29,14 @@ backend is the focus of this design:
   Authoritative_State, and handles Unknown_Outcome.
 - **Model_Context_Builder**, **Secret_Guard**, **Chain_Verifier**,
   **Profile_Loader** and a **Partitioned_Store** keyed by principal id.
+- **Plugin feeds** (owner input 2026-11-08, D-37 to D-41): each sealed plugin
+  has its own schema feed and state feed on EMQX, gated per identity at EMQX
+  delivery through the ExHook channel at `127.0.0.1:9000`, and delivered to
+  the Chat_UI over a tonic-web (gRPC-Web) server stream on Door_8090. Feeds
+  are display data and change notifications only. `3tched-fs describe`
+  through the Bound_Identity's mount stays the authoritative Tool_Registry
+  source, and the Tool_Registry, Schema_Validator and Confirmation_Gate stay
+  authoritative (D-38).
 
 The Chat_UI (SvelteKit, Svelte 5, json-render Svelte) is specified only as
 far as the backend contract needs: the message stream, Tool_Call status
@@ -64,6 +72,17 @@ Blocker_Records instead of working around them:
    come from mounted Sealed_Method_Schemas, so they are recorded as
    discovery-pending with a discovery procedure, not as invented names.
 
+A fourth fact limits the plugin feeds the owner asked for on 2026-11-08
+(D-37). The pinned bridge has the ExHook channel at `127.0.0.1:9000`, the
+per-plugin topic prefixes `opdbus/schema/` and `opdbus/state/`, and a
+tonic-web `StateSync/Subscribe` stream on Door_8090. It has no publisher for
+per-plugin schema or state topics, no grant-based gate per plugin or method,
+no View_Kind in topic names, and no link between the tonic-web stream and
+EMQX. Each missing piece is a change to pinned op-dbus and needs its own
+Owner_Authorization naming that change (B-16 to B-19). The
+Identity_Container has no path to any feed (B-20). The requirements do not
+yet mention feeds; the owner may want to return to requirements to add them.
+
 Two conflicts between the requirements and the pinned contract were found
 while reading source. They are recorded as OPEN and need an owner decision,
 possibly a return to requirements:
@@ -97,6 +116,32 @@ sha256.
 | `crates/op-plugins/src/state_plugins/identity_sled.rs` | `get_own_identity` (Read, `cap.identity.sled.self.read@v1`, input `{}`), `get_session_history` (Read, `identity_sled.read`, input `{ session_id, limit }`), `touch_session` (Mutation, idempotent, `identity_sled.write`), `record_session_event` (Mutation, not idempotent, `identity_sled.write`), `refresh_credential` (Mutation, `identity_sled.credential.refresh`), `ContainerIdentitySled` fields | WT: schema 4.9.0; `refresh_credential` output gains `sealed_id` (SID1) in WT; `rename_container` added in WT |
 | `crates/op-plugins/src/state_plugins/chat_router_generation.rs` | `start_generation` (Mutation, `cap.software.chat-router.generation.start@v1`, input `{ agent_alias, prompt }`), `get_generation_job` (Read) | WT |
 | `crates/op-plugins/src/state_plugins/chat_fs.rs` | `get_receipt` (Read, `cap.storage.3tchedfs.receipt.read@v1`, input `GetMethodReceiptInput`) | WT |
+| `crates/op-plugins/src/state_plugins/emqx.rs` | `EXHOOK_TARGET = "https://127.0.0.1:9000"` (line 92), `EXHOOK_SERVICE = "emqx.exhook.v3.HookProvider"`, `REGISTERED_HOOKS`, `SCHEMA_TOPIC_PREFIX = "opdbus/schema/"` (line 65, "retained per-plugin method schemas ... the feed never grants the right to call them"), `STATE_TOPIC_PREFIX = "opdbus/state/"` (line 70, `opdbus/state/<plugin>` and `.../events`, "hints, not proof"), `TOOLSETS_TOPIC`, `WAKE_TOPIC_PREFIX`, `publish_toolsets` (EMQX HTTP API `/publish`), `kick_client`, `EMQX_MQTT_TCP_BIND = "127.0.0.1:1883"`, `EMQX_MQTT_WSS_BIND = "127.0.0.1:8085"` | clean at pinned and HEAD |
+| `crates/op-grpc-bridge/src/emqx_hook_provider.rs` | `HookProviderService::on_client_authorize` (delegates to `wake_doorbell::authorize`), `on_message_publish`, `on_message_delivered` (returns `EmptySuccess`, no decision) | pinned; not declared as a module in HEAD `lib.rs` |
+| `crates/op-grpc-bridge/src/wake_doorbell.rs` | `authorize` (lines 169-218): a doorbell client may subscribe to its own wake topic, `TOOLSETS_TOPIC`, or any topic that *starts with* the schema or state prefix, while a live sled derives its client id; publish always denied; `owner_key` = `sha256(principal, session, genesis)` | pinned; not declared as a module in HEAD `lib.rs` |
+| `crates/op-grpc-bridge/proto/emqx_exhook_v3.proto` | `OnClientAuthorize -> ValuedResponse` (line 47), `OnMessagePublish -> ValuedResponse` (line 67), `OnMessageDelivered -> EmptySuccess` (line 69) | clean |
+| `crates/op-grpc-bridge/proto/operation.proto` | `StateSync.Subscribe(SubscribeRequest) returns (stream StateChange)` (line 17); `SubscribeRequest { plugin_ids, path_patterns, tags, include_initial_state, include_schema }`; `StateChange { ..., schema_hash, catalog_hash, state_generation, frame_kind }`; schema frames use `CHANGE_TYPE_SCHEMA_MIGRATION` with the sealed PluginSchema JSON; `PluginService.SubscribeSignals`, `EventChainService.SubscribeEvents` | 2 lines differ at HEAD (not inspected) |
+| `crates/op-grpc-bridge/proto/registry.proto` | `ComponentRegistry.Watch(WatchRequest) returns (stream RegistryEvent)` (line 35): a component registry (register, heartbeat), not plugin method schemas | clean |
+| `crates/op-grpc-bridge/src/grpc_server.rs` | routes (about lines 1355-1395): `StateSyncServer`, `PluginServiceServer`, `EventChainServiceServer` wrapped by `grpc_web::enable` with the Ghostbridge assertion interceptor; `ComponentRegistryServer` with `unsupported_legacy_domain` (fails closed); `StateSync::subscribe` (line 1557) reads `mutation_engine.change_tx()` and the public SHM snapshot | pinned |
+| `crates/op-grpc-bridge/src/grpc_web.rs` | `enable` (tonic-web `GrpcWebLayer`, exact-origin OIA1 CORS, capability metadata headers) | not re-checked |
+| `crates/op-grpc-bridge/src/interceptor.rs` | `ReceiverRpcPath::is_state_subscription` (`/operation.v1.StateSync/Subscribe`) | pinned |
+| `deploy/emqx/base.hocon` | `exhook.servers[].url = "https://127.0.0.1:9000"` (line 12), mTLS client cert | clean |
+| `deploy/runit/op-grpc-bridge/run` | `OP_EMQX_EXHOOK_BIND_ADDR=127.0.0.1:9000` (line 158 at pinned, line 161 at HEAD) | HEAD differs |
+| `deploy/runit/op-grpc-bridge/check` | `.exhook_addr == "127.0.0.1:9000"` (line 19 at HEAD; absent at pinned) | HEAD differs |
+| `deploy/runit/fwd-mail-php-9000/run` | waits for `127.0.0.1:9000` (line 4) and relays `100.69.0.1:9000` and a Unix socket to `127.0.0.1:9000` (lines 14-15), expecting PHP-FPM | same at pinned and HEAD |
+
+Baseline drift found while reading for the feed design: `/srv/git/odbus-verified`
+HEAD is now `a2773e17783ba8e1e595fa034798e79cbab40a91` (branch `dev`), a
+descendant of the pinned commit. At HEAD the ExHook provider is
+`runtime_mqtt` (`lib.rs:74`; files `runtime_mqtt.rs`, `runtime_mqtt_auth.rs`,
+`runtime_mqtt_hooks.rs`, introduced in `56380c8`). Its
+`runtime_mqtt_auth.rs` `authorize` (line 233) denies every `opdbus/` topic,
+every `$` topic and every filter containing `#` or `+` except the caller's
+exact own wake topic, and `runtime_mqtt.rs` line 5 says "MQTT never carries
+state". At HEAD the schema and state topics therefore cannot be subscribed
+at all (B-23). The feed rows above were read on 2026-11-08 after the first
+set, with `git show 154a1b9…:<path>` for pinned content and the working
+tree for HEAD content.
 
 Facts from the owner brief that this design relies on but did not observe:
 live sealed catalog generation 144 contains `threetched` and `chat_router`
@@ -141,6 +186,22 @@ flowchart LR
   Mount["Bound_Identity mount: plugins/<p>/operations/<m>/call"]
   Provider["Model_Provider via AI SDK provider package"]
 
+  subgraph Pinned["pinned op-dbus (read-only; feed pieces marked B-xx are missing)"]
+    Pub["per-plugin schema/state publisher (B-16)"]
+    EMQX["EMQX broker"]
+    Hook["op-grpc-bridge ExHook HookProvider at 127.0.0.1:9000 (gate: B-17)"]
+    Relay["bridge relay: EMQX-gated subscription to tonic-web stream (B-19)"]
+    Door["Door_8090: StateSync/Subscribe via grpc_web::enable"]
+  end
+  UIFeed["Chat_UI Feed_Consumer (one stream per plugin)"]
+
+  Pub -->|"publish per (view, kind, plugin, owner key)"| EMQX
+  EMQX -->|"client.authorize, message.publish"| Hook
+  EMQX -->|"deliver only what authorize allowed"| Relay --> Door
+  Door -->|"gRPC-Web server stream"| UIFeed
+  UIFeed -->|"catalog-hint (no data used)"| Decision
+  UIFeed --> UIRender
+
   UIChat -->|"UI message stream v1"| Intake
   UIChat -->|"approve / reject"| Decision
   Intake --> Session --> Loop
@@ -154,6 +215,13 @@ flowchart LR
   Route --- Store
   Loop -->|"text, data-tool-status, data-typed-error"| Guard --> Intake
 ```
+
+The feed path (D-37 to D-41) runs from pinned op-dbus straight to the
+Chat_UI through Door_8090 and does not pass through the Chat_Route. Feed
+messages never reach the Tool_Registry; the only thing the Chat_UI sends back
+is a content-free `catalog-hint` that makes the Chat_Route re-read its own
+mount's catalog pin (D-38). Because this path bypasses the server-side
+Secret_Guard, D-41 and B-21 record how feed payloads are checked.
 
 Every arrow out of the Chat_Route core to the Chat_UI, the Model_Provider,
 logs or persisted state passes through the Secret_Guard. The only path from
@@ -186,8 +254,21 @@ flowchart TB
     Browser2 -.->|"BLOCKED B-04: no existing hop reaches a Chat_Route"| HDRoute
     HDRoute --> HDCLI --> HDMount
     HDRoute -.->|"BLOCKED B-07: no named egress"| Prov2["Model_Provider"]
+    EMQXH["EMQX broker (host loopback)"]
+    HookH["ExHook gRPC 127.0.0.1:9000, served by op-grpc-bridge (pre-existing; Owner_Authorization 2026-11-08)"]
+    EMQXH -->|"EMQX calls the bridge (mTLS)"| HookH
+    EMQXH -.->|"BLOCKED B-16..B-19: no publisher, no grant gate, no relay to the stream"| Door
+    Door -->|"StateSync/Subscribe over tonic-web (pre-existing RPC)"| Browser2
   end
+  ICRoute -.->|"BLOCKED B-20: Lungs_Socket carries operation-file calls only; 127.0.0.1:9000, EMQX and Door_8090 are unreachable from the container"| EMQXH
 ```
+
+`127.0.0.1:9000` is the ExHook endpoint: EMQX is the gRPC client and
+op-grpc-bridge is the server. It is not a listener that any Chat_UI or
+Chat_Route subscribes to, and the design adds no connection to it from
+hackathon code. EMQX's own MQTT listeners (`127.0.0.1:1883`,
+`127.0.0.1:8085`, pinned `emqx.rs` lines 37 and 41) are not used by the
+Chat_Interface either; the browser receives feeds only through Door_8090.
 
 Solid arrows are pre-existing hops. Dashed arrows are hops the design needs
 and no pre-existing component provides. The Chat_Route core does not depend
@@ -351,6 +432,59 @@ sequenceDiagram
   C-->>UI: per-link results, read time, verified / broken / unverified
 ```
 
+### Sequence: gated plugin feed subscription, refusal and revocation
+
+This sequence is the target flow of D-37 to D-41. Every step on the op-dbus
+side (publisher, gate, relay) is missing from the pinned code and is listed
+with its blocker; the Chat_UI side is hackathon code.
+
+```mermaid
+sequenceDiagram
+  participant UI as Chat_UI Feed_Consumer
+  participant D as Door_8090 (tonic-web, Ghostbridge interceptor)
+  participant Rl as bridge relay (B-19)
+  participant E as EMQX
+  participant H as ExHook at 127.0.0.1:9000 (gate B-17)
+  participant Pb as publisher (B-16)
+  participant R as Chat_Route
+  Pb->>E: retain opdbus/3tched/schema/identity_sled/<owner-key> (granted methods only)
+  UI->>D: StateSync/Subscribe {plugin_ids:[identity_sled], include_schema, include_initial_state} + OIA1/SID1 (Door_8090 model)
+  D->>D: verify credential (existing interceptor), caller -> owner key
+  D->>Rl: open gated subscription for caller owner key
+  Rl->>E: SUBSCRIBE exact topics of (view, plugin, owner key)
+  E->>H: OnClientAuthorize(subscribe, topic)
+  H->>H: exact topic? own owner key? live sled? plugin read capability held?
+  H-->>E: allow
+  E-->>Rl: retained schema message, then state messages
+  Rl-->>D: StateChange frames (no decision of its own)
+  D-->>UI: gRPC-Web frames (schema_hash, catalog_hash, state_generation)
+  UI->>UI: client feed check (D-41), literal display only
+  alt catalog_hash or generation differs from the last one shown
+    UI->>R: catalog-hint (no payload used)
+    R->>R: re-read mount pin; if changed: re-derive registry, discard pending calls
+  end
+
+  Note over UI,H: refused subscription
+  UI->>D: StateSync/Subscribe {plugin_ids:[ctl_plane_chatbot]}
+  Rl->>E: SUBSCRIBE opdbus/3tched/schema/ctl_plane_chatbot/<owner-key>
+  E->>H: OnClientAuthorize
+  H-->>E: deny (capability absent, or wildcard, or other owner key)
+  E-->>Rl: SUBACK failure
+  Rl-->>D: PERMISSION_DENIED
+  D-->>UI: stream ends with status PERMISSION_DENIED
+  UI->>UI: show Denial (plugin, missing capability or policy, error text); no retry by another identity, transport or topic
+  UI->>R: feed-denial report (plugin, error text) for the Blocker_Record
+
+  Note over UI,H: revocation
+  Pb->>Pb: grant revoked or sled tombstoned
+  Pb->>E: republish filtered retained schema (or clear it)
+  Pb->>E: emqx.kick_client(owner key) (pinned method)
+  E-->>Rl: session closed
+  Rl-->>D: end stream PERMISSION_DENIED
+  D-->>UI: stream ends
+  UI->>UI: clear that plugin's feed panels; a re-subscribe runs authorize again
+```
+
 ### Turn loop and Session_Mode limit
 
 One operator message starts one turn. The turn loop runs model steps until
@@ -413,11 +547,15 @@ apps/identity-chat/
     status/tool-call-status.ts        status state machine
     records/blocker-records.ts
     records/security-events.ts
+    feeds/feed-hints.ts               catalog-hint and feed-denial intake (D-38, D-41)
     errors/typed-error.ts
     provider/model-provider.ts        provider construction from D-04
   src/lib/client/
     chat-transport.ts                 ChatTransport implementation per host
     decisions.ts                      approve / reject requests
+    feeds/feed-consumer.ts            one StateSync/Subscribe stream per plugin (D-40)
+    feeds/feed-topics.ts              topic and plugin-to-view mapping (D-39)
+    feeds/feed-check.ts               client-side payload check before display (D-41)
   src/lib/catalog/
     catalog.ts                        json-render Catalog
     registry.ts                       Component_Registry (Svelte components)
@@ -581,6 +719,9 @@ export interface ToolRegistry {
 - The registry is re-derived when the catalog pin read before a model
   request or an Operation_File call differs from the snapshot's pin (6.5,
   6.10).
+- Plugin feed messages are never an input to `derive` (D-38). A
+  `catalog-hint` from the Chat_UI only triggers an immediate re-read of the
+  mount's own pin; the hint's content is discarded.
 
 ### Schema_Validator
 
@@ -850,6 +991,58 @@ construction. Validation and not-offered refusals use `failed` with error
 kind `validation`, because Requirement 11.5 offers no other status and these
 calls never reach an Operation_File.
 
+### Feed_Consumer and feed hints
+
+```ts
+/** Browser side. One gRPC-Web server stream per plugin (D-40). */
+export interface FeedConsumer {
+  open(plugin: PluginId): FeedHandle;          // view derived by feed-topics.ts, never chosen by the user
+  close(plugin: PluginId): void;
+}
+export interface FeedHandle {
+  readonly plugin: PluginId;
+  readonly viewKind: ViewKind;
+  readonly state: "connecting" | "open" | "denied" | "ended" | "blocked";
+  schema(): FeedSchemaView | null;             // display only
+  stateView(): FeedStateView | null;           // display only, labelled "hint, not proof"
+}
+
+/** Server side, in the Chat_Route. */
+export interface FeedHints {
+  /** Content is discarded; triggers ToolRegistry pin re-read (D-38). Rate limit 1 per second per session. */
+  catalogHint(key: SessionKey): Promise<void>;
+  /** Writes a Blocker_Record marked "reported by Chat_UI" after request-intake guard (5.8). */
+  feedDenial(key: SessionKey, report: FeedDenialReport): Promise<void>;
+}
+```
+
+- The Feed_Consumer opens `operation.v1.StateSync/Subscribe` on Door_8090
+  with `plugin_ids: [plugin]`, `include_schema: true`,
+  `include_initial_state: true`, through the existing Door_8090 credential
+  model (5.3). It opens no other RPC and never a client-streaming or
+  bidirectional one; gRPC-Web supports unary and server-streaming calls only.
+- It accepts a frame only when the frame's `plugin_id` equals the stream's
+  plugin and the plugin's View_Kind (D-39) matches the stream's View_Kind.
+  Any other frame ends the stream as `blocked` and is not displayed
+  (per-plugin isolation, Property 48).
+- Every frame passes `feed-check.ts` (D-41) before display. A match blocks
+  the frame and ends the stream as `blocked`.
+- A `PERMISSION_DENIED` or `UNAUTHENTICATED` stream status is a Denial: the
+  handle becomes `denied`, the UI shows the plugin, the missing capability
+  or policy when the status carries one, and the error text; the consumer
+  sends one `feedDenial` report and never re-opens the same plugin in that
+  Chat_Session through any other RPC, identity, credential or topic.
+- A stream that ends for any other reason (network, server restart) may be
+  re-opened once per 10 s with the same request; the re-open goes through
+  the same gate.
+- When a schema frame carries a `catalog_hash` or a state frame a
+  `state_generation` that differs from the last displayed value
+  for that view, the consumer sends one `catalogHint` and clears the
+  displayed schema until the next schema frame arrives.
+- Feed data never enters Chat_UI tool lists, approve prompts or status cards.
+  Those come only from the Chat_Route's `data-session` and
+  `data-tool-status` parts.
+
 ### Chat_UI contract (backend-facing only)
 
 Stream: AI SDK UI message stream protocol `v1`
@@ -872,6 +1065,28 @@ Requests the Chat_UI sends:
   `{ type: "reject", toolCallId }` on the decision path, sent only from the
   approve and reject controls of a `ConfirmationPrompt`.
 - Re-verify: `{ type: "reverify" }`.
+- Catalog hint: `{ type: "catalog-hint" }` (no other field accepted).
+- Feed denial: `{ type: "feed-denial", plugin, status, error }`, each string
+  bounded at 256 characters and checked by the request-intake guard.
+
+Plugin feed stream (Chat_UI to Door_8090, not through the Chat_Route; D-40).
+RPC: `operation.v1.StateSync/Subscribe`, gRPC-Web server streaming, one
+stream per plugin. Request and frame fields are the pinned `operation.proto`
+messages unchanged:
+
+| Message | Fields the Chat_UI uses | Meaning in the feed | UI element |
+|---|---|---|---|
+| `SubscribeRequest` | `plugin_ids = [<plugin>]`, `include_schema = true`, `include_initial_state = true`, `path_patterns = []`, `tags = []` | open the schema and state feeds of one plugin | none |
+| `StateChange` with `change_type = CHANGE_TYPE_SCHEMA_MIGRATION` | `plugin_id`, `member_name` (schema hash), `new_value` (method declarations visible to the caller: name, args and returns JSON Schemas, `required_capability`, side effect, `idempotent`, `subid`), `schema_hash`, `catalog_hash` | schema feed message | `PluginSchemaPanel` (literal text, "catalog data, not an offer") |
+| `StateChange` with `frame_kind = STATE_FRAME_KIND_INITIAL_STATE` or `STATE_FRAME_KIND_UPDATE` | `plugin_id`, `object_path`, `member_name`, `new_value`, `event_hash`, `catalog_hash`, `state_generation`, `timestamp` | state feed message | `PluginStatePanel` (literal text, "hint, not proof") |
+| `StateChange` with `frame_kind = STATE_FRAME_KIND_HEARTBEAT` | `catalog_hash` | keepalive | none |
+| stream status `PERMISSION_DENIED` / `UNAUTHENTICATED` | status message | gated refusal or revocation | `ErrorNotice` kind `denial` |
+
+Today the pinned `StateSync/Subscribe` serves the public SHM projection and
+whole PluginSchemas from `mutation_engine.change_tx()`, not an EMQX-gated
+subscription (B-19). The Chat_UI stream code is written against the
+unchanged proto, so it needs no change when the bridge relay exists; until
+then the Feed_Consumer stays disabled (D-40).
 
 The Chat_UI renders all model text and tool results as literal text through
 Catalog elements (14.2), derives no status locally (11.3) and stores nothing
@@ -1019,6 +1234,43 @@ type CredentialClass = "sid1" | "oia1" | "provider-credential" | "identity-key" 
 interface ExecutionRecordView {        // subset of the pinned ExecutionRecord as returned by the read
   id: string; prevHash: string; execHash: string;
   toolName?: string; integrity?: boolean;
+}
+```
+
+Plugin feed shapes (D-37 to D-41). Browser-side values are display data;
+none of them is stored in the Partitioned_Store or read by the Tool_Registry.
+
+```ts
+type FeedKind = "schema" | "state";
+
+/** Topic for one feed of one plugin, for one identity (D-39). */
+interface FeedTopic {
+  viewKind: ViewKind;                  // "3tched" | "threetched"
+  kind: FeedKind;
+  plugin: string;                      // [A-Za-z0-9_.-]{1,128}; on the threetched side only the threetched plugin
+  ownerKey: string;                    // 64 lowercase hex, pinned owner_key(principal, session, genesis)
+  events?: true;                       // state only: .../events
+}
+// rendered: opdbus/<viewKind>/<kind>/<plugin>/<ownerKey>[/events]
+
+interface FeedSchemaView {             // from a CHANGE_TYPE_SCHEMA_MIGRATION frame
+  plugin: string; viewKind: ViewKind;
+  schemaHash: string; catalogHash: string;
+  methods: { name: string; args: JsonValue; returns: JsonValue | null;
+             requiredCapability: string | null; sideEffect: string;
+             idempotent: boolean; subid: string }[];   // only methods the gate let through
+  receivedAt: string;
+}
+
+interface FeedStateView {
+  plugin: string; viewKind: ViewKind;
+  catalogHash: string; stateGeneration: number;
+  frames: { objectPath: string; member: string; value: JsonValue;
+            eventHash: string; at: string }[];         // bounded ring, 256 frames
+}
+
+interface FeedDenialReport {           // Chat_UI to Chat_Route, for the Blocker_Record
+  plugin: string; status: string; error: string;       // each <= 256 chars, request-intake guarded
 }
 ```
 
@@ -1642,6 +1894,267 @@ reference to the grant file or `op-grants-materializer`), `check-pins.ts`
   our 3tched-fs code; its directory name is a pinned naming defect. This
   design cites it only as a path.
 
+### D-37 EMQX control-plane boundary for plugin feeds (Owner_Authorization)
+
+- **Owner_Authorization OA-2026-11-08-EMQX (DECIDED, owner, 2026-11-08):**
+  owner input, verbatim: (1) "each plugin schema and state should have own
+  emqx feed and subscription to deliver schema to ui"; (2) "i approve the
+  control plane boundary for emqx, and this should use the private emqx
+  transport at 127 port 9000"; (3) "all feeds are subject to gating if you
+  are not supposed to see the feed."; (4) "yes gating emqx delivery
+  tonic-web".
+- **Scope of the authorization:** EMQX is an approved control-plane channel
+  for schema and state delivery, on the private local endpoint
+  `127.0.0.1:9000`. This is an owner exception to the steering line "no new
+  control plane", for EMQX only. Every other steering rule still applies: no
+  new inbound door, the Lungs_Socket stays the container's only host
+  channel, the Secret_Guard rules, identity enforcement, and pinned op-dbus
+  stays read-only. The authorization does **not** authorize any change to
+  pinned op-dbus; each pinned change listed in B-16 to B-19 needs its own
+  Owner_Authorization that names the change.
+- **What `127.0.0.1:9000` is in the pinned source:** the EMQX ExHook v3
+  `HookProvider` gRPC server, served by op-grpc-bridge
+  (`emqx.rs:92` `EXHOOK_TARGET`; `deploy/emqx/base.hocon:12`;
+  `deploy/runit/op-grpc-bridge/run:158` at pinned, `:161` at HEAD;
+  `deploy/runit/op-grpc-bridge/check:19` at HEAD only). EMQX is the gRPC
+  client and calls the bridge, over mTLS. It is the decision channel for
+  gating, not a transport that a browser or Chat_Route connects to. The
+  "private transport at 127 port 9000" is therefore used as the gate's
+  channel; delivery to the browser is tonic-web on Door_8090 (owner input
+  4). The Chat_Interface opens no connection to `127.0.0.1:9000`, `:1883` or
+  `:8085`.
+- **Target flow:** op-dbus publishes per-plugin schema and state messages on
+  EMQX (B-16); EMQX delivery is gated per identity through ExHook
+  `client.authorize` and `message.publish` at `127.0.0.1:9000`, decided by
+  op-grpc-bridge from the identity's existing grants (B-17, D-39);
+  op-grpc-bridge relays the gated subscription to the browser as the
+  existing tonic-web `StateSync/Subscribe` server stream on Door_8090 (B-19,
+  D-40); the Chat_UI subscribes per plugin.
+- **Already possible in the pinned code:** the ExHook channel and its mTLS
+  (`base.hocon`, `run`); `client.authorize` receiving every SUBSCRIBE and
+  PUBLISH with a verdict (`emqx_hook_provider.rs` `on_client_authorize`,
+  `OnClientAuthorize -> ValuedResponse`); owner-key client identity with
+  SID1 or OIA1 authentication and live-sled re-check on every subscribe
+  (`wake_doorbell.rs`); retained per-plugin topic prefixes
+  (`SCHEMA_TOPIC_PREFIX`, `STATE_TOPIC_PREFIX`); revocation by
+  `emqx.kick_client`; a tonic-web server stream on Door_8090 with per-plugin
+  selection, sealed-schema frames, `catalog_hash` and `state_generation`
+  (`StateSync/Subscribe`, `grpc_server.rs`, `grpc_web.rs`).
+- **Needs pinned-code changes (blocked):** a publisher of per-plugin topics
+  (B-16); a grant-based per-plugin gate and closing the wildcard gap (B-17);
+  View_Kind in topic names (B-18); a relay from the gated EMQX subscription
+  into the tonic-web stream (B-19). At HEAD the feed topics are refused
+  outright (B-23).
+- **Not used:** `crates/op-chat/proto/agents.proto`, `runtime_chat.rs`,
+  `chat_response_state.rs`, the `ChatService` route in `grpc_server.rs`, and
+  the private `chatbot_episode_stream` selection inside `StateSync::subscribe`
+  are legacy chat code under the clean-slate rule (D-36) and are inventory
+  candidates, not feed sources.
+- **Port check for the Runtime_Record (B-22):** `fwd-mail-php-9000/run`
+  waits for and relays to `127.0.0.1:9000` expecting PHP-FPM (lines 4, 14,
+  15, same at pinned and HEAD; it now listens on `100.69.0.1:9000`, but its
+  upstream is still loopback 9000), while op-grpc-bridge binds ExHook on
+  `127.0.0.1:9000`. Record `ss -ltnp 'sport = :9000'` (owning process),
+  `sv status fwd-mail-php-9000` and `sv status op-grpc-bridge`, with
+  timestamps, before any feed task relies on the endpoint.
+
+### D-38 Role of feeds versus `3tched-fs describe`
+
+- **Choice (DECIDED):** `3tched-fs describe` through the Bound_Identity's
+  own mount stays the only source of the Tool_Registry (6.1). Schema feeds
+  are catalog and display data plus change notifications.
+- **Reason:** `describe` runs with the kernel-bound caller of the mount and
+  the pinned mount verification (D-09); a feed message is delivered to a
+  browser credential that may not be the Bound_Identity (D-41), may lag the
+  catalog, and on the Host_Dashboard never passes through the Chat_Route.
+  Requirement 6.1 also names the mounted Sealed_Method_Schemas as the
+  source.
+- **Rules:**
+  - A feed message never offers a tool, never marks a tool unavailable,
+    never changes an argument schema, never confirms or rejects a pending
+    Tool_Call, and never enters the Model_Context.
+  - A changed `catalog_hash` or `state_generation` on a feed makes the
+    Chat_UI send `catalog-hint`. The Chat_Route discards the hint's content,
+    re-reads the mount's catalog pin, and only if that pin differs runs the
+    existing 6.5 path: re-derive, re-read the Held_Capability_Set, discard
+    pending unconfirmed Tool_Calls. The 6.5 and 6.10 pin checks before each
+    model request and Operation_File call stay as they are, so a lost hint
+    delays nothing that matters for safety.
+- **Alternatives:**
+  - Feeds replace `describe`: rejected; the registry would depend on a
+    channel whose identity binding and Secret_Guard check are weaker
+    (B-21), and Requirement 6.1 would need to change.
+  - `describe` only, no feeds: rejected by owner input (1).
+  - One aggregate topic for all plugins: rejected by owner input (1), and an
+    aggregate topic can only be gated all-or-nothing, which breaks owner
+    input (3) for partly granted identities.
+
+### D-39 Topic scheme and gating granularity
+
+- **Topic scheme (PROPOSED-DEFAULT, needs pinned change B-18):**
+
+| Feed | Topic | Retained |
+|---|---|---|
+| schema | `opdbus/<view_kind>/schema/<plugin>/<owner-key>` | yes, latest filtered schema |
+| state snapshot | `opdbus/<view_kind>/state/<plugin>/<owner-key>` | yes, latest snapshot with `catalog_hash` and `state_generation` |
+| state events | `opdbus/<view_kind>/state/<plugin>/<owner-key>/events` | no |
+
+  `<view_kind>` is `3tched` or `threetched` (steering
+  `naming-3tched-threetched.md`). The `threetched` plugin appears only under
+  `opdbus/threetched/...`; every other plugin only under `opdbus/3tched/...`.
+  No topic contains the excluded names of D-32 or `zeroclaw`. `<plugin>`
+  uses the sealed plugin id with the pinned `valid_toolset_id` character set;
+  `<owner-key>` is the pinned `owner_key` (`sha256(principal, session,
+  genesis)`), so the broker never sees a principal id. The pinned prefixes
+  `opdbus/schema/<plugin>` and `opdbus/state/<plugin>` have no view and no
+  owner key; the new scheme sits beside them under a different second
+  segment.
+- **Gating granularity (PROPOSED-DEFAULT): per-identity filtered topic per
+  plugin.** The publisher writes, for each identity and plugin, a schema
+  message that contains only the methods whose `required_capability` that
+  identity holds, and a state message only when the identity holds the
+  plugin's read capability (the Required_Capability of the plugin's state
+  Read_Method, to be recorded during discovery, D-11). `client.authorize`
+  allows SUBSCRIBE only when all of these hold: the filter has no `+` or
+  `#`; it is exactly one topic of the scheme; its `<owner-key>` equals the
+  client id; a live, anchored sled still derives that key (pinned
+  `sled_still_derives`); and the identity holds at least one capability that
+  the topic's plugin requires. Every PUBLISH to `opdbus/` from a client is
+  denied; `message.publish` stops any message on the scheme that did not
+  come from the bridge publisher. Any error, timeout or unparsable grant in
+  the gate denies (fail closed).
+- **Why not the alternatives:**
+  - Whole-plugin gate on a shared topic `opdbus/<view>/schema/<plugin>`:
+    one retained message per plugin and no fan-out, but an identity granted
+    some methods of a plugin either sees the ungranted methods' schemas
+    (breaks owner input 3) or is denied the whole plugin (hides methods it
+    may call). Rejected.
+  - Per-method topics `.../<plugin>/<method>`: the gate maps one topic to
+    one `required_capability`, but a plugin-level view then needs one
+    subscription per method, wildcards must still be denied, and state is
+    per plugin, not per method. Rejected as contrary to "one feed per
+    plugin".
+  - Chosen option cost: retained messages scale with identities × plugins,
+    and the publisher must republish on every grant or catalog change.
+- **Per-message gating:** ExHook v3 `OnMessageDelivered` returns
+  `EmptySuccess` (`emqx_exhook_v3.proto:69`; pinned
+  `on_message_delivered` is a no-op), so it cannot veto one delivery. The
+  equivalent per-message gate is therefore: per-identity topics whose content
+  the publisher filtered for that identity, `OnClientAuthorize` on every
+  SUBSCRIBE, and `OnMessagePublish -> ValuedResponse` (`proto:67`) stopping
+  any publish not from the bridge publisher. Whether EMQX HTTP API
+  `/publish` (used by pinned `publish_toolsets`) runs the `message.publish`
+  hook must be confirmed against the deployed EMQX 6.2.2 before relying on
+  it (OPEN).
+- **Wildcards:** at the pinned commit `wake_doorbell::authorize` admits any
+  filter that *starts with* `opdbus/schema/` or `opdbus/state/`, so
+  `opdbus/schema/#` passes and shows every plugin's schema to every live
+  identity (B-17). The chosen gate denies every filter containing `+` or `#`
+  under `opdbus/`, as HEAD's `runtime_mqtt_auth.rs:237-238` already does for
+  the whole namespace.
+- **Revocation:** a grant change or sled tombstone makes the publisher
+  republish the affected filtered retained messages (or clear them with an
+  empty retained message when nothing is left) and call the pinned
+  `emqx.kick_client` for the owner key, so the session closes and any
+  re-subscribe runs `client.authorize` again. The interval between the grant
+  change and the kick, and whether EMQX caches authorization results
+  (`authorization.cache`) on the deployed broker, are OPEN and must be read
+  from the live configuration into the Runtime_Record.
+- **Denial handling:** a refused SUBSCRIBE is a Denial. The Chat_UI shows it,
+  reports it once through `feed-denial`, and the Chat_Route writes a
+  Blocker_Record (operation `StateSync/Subscribe <plugin>`, caller, missing
+  capability or policy if the status names it, error text). No retry through
+  another identity, transport, RPC or topic.
+
+### D-40 Delivery to the Chat_UI over tonic-web
+
+- **Choice (PROPOSED-DEFAULT, needs pinned change B-19):** the existing RPC
+  `operation.v1.StateSync/Subscribe`, unchanged in `operation.proto`, as the
+  per-plugin stream: one stream per plugin with `plugin_ids` set to that one
+  plugin, `include_schema` and `include_initial_state` true. Schema feed
+  messages map to `CHANGE_TYPE_SCHEMA_MIGRATION` frames (`new_value` = the
+  filtered method declarations, `schema_hash`, `catalog_hash`); state feed
+  messages map to `STATE_FRAME_KIND_INITIAL_STATE` and `_UPDATE` frames. The
+  two EMQX feeds stay separate topics and separate gate decisions; the
+  stream carries both, distinguished by frame kind. The View_Kind is derived
+  from the plugin id (the `threetched` plugin maps to the `threetched` view),
+  so the proto needs no view field.
+- **Already true at the pinned commit:** `StateSyncServer` is wrapped by
+  `crate::grpc_web::enable` with the Ghostbridge assertion interceptor in the
+  `grpc_server.rs` routes, so it is reachable as gRPC-Web with the existing
+  OIA1/SID1 credential model; the interceptor recognises
+  `/operation.v1.StateSync/Subscribe` (`interceptor.rs:44`). Which listener
+  these routes bind (Door_8090) must be re-observed into the Runtime_Record.
+- **Not true at the pinned commit:** `StateSync::subscribe` reads
+  `mutation_engine.change_tx()` and the public SHM snapshot
+  (`state_stream::read_public_state_snapshot`) and emits whole sealed
+  PluginSchemas. It is not fed from EMQX and applies no per-method grant
+  filter, so using it unchanged would deliver schema and state that the
+  EMQX gate never decided on, contrary to owner input (3) and (4). The relay
+  (bridge holds the caller's EMQX subscription and forwards only what EMQX
+  delivered) is pinned code that does not exist. How the relay admits to
+  EMQX as the caller's owner key is also undesigned: the browser's OIA1 is
+  one-time (`wake_doorbell` tests reject a replayed assertion), so the bridge
+  cannot re-present it.
+- **The stream adds no second gate decision.** Its only checks are the
+  existing Door_8090 credential verification and the binding re-validation
+  of `bound_state_subscription.rs`; what it carries is exactly what EMQX
+  delivered to that identity's subscription.
+- **gRPC-Web limits:** unary and server streaming only; no client or
+  bidirectional streaming. The plugin set of a stream is fixed when it
+  opens, so subscribing to another plugin opens another stream, and
+  unsubscribing closes one. Many concurrent streams over HTTP/1.1 hit the
+  browser's per-origin connection limit; whether Door_8090 serves gRPC-Web
+  over HTTP/2 is to be observed.
+- **Until B-16 to B-19 are resolved** the Feed_Consumer is built but
+  disabled (no stream is opened), because opening the ungated pinned stream
+  would violate owner input (3). The Chat_UI shows plugin schemas only from
+  the Chat_Route's `data-session` part, which comes from `describe`.
+- **Alternatives:**
+  - `ComponentRegistry.Watch` (`registry.proto:35`): a component registry
+    (register, heartbeat), not plugin method schemas, and its route uses
+    `unsupported_legacy_domain`, which fails closed. Rejected.
+  - `PluginService.SubscribeSignals`, `EventChainService.SubscribeEvents`:
+    D-Bus signals and audit chain events, not schema or state feeds.
+    Rejected for feeds; `SubscribeEvents` may matter for D-12 discovery.
+  - A new feed RPC: needs a proto change on top of the relay. Rejected while
+    the existing RPC fits.
+  - Browser connects to EMQX directly (`127.0.0.1:8085` WSS): loopback-only
+    and a new browser-facing door. Rejected (13.2, 13.4).
+
+### D-41 Feed payload checks and feed identity
+
+- **Status: PROPOSED-DEFAULT with OPEN conflicts (B-21).**
+- **Payload check:** on the Host_Dashboard the feed goes from Door_8090 to
+  the browser and never reaches the Chat_Route, so the server-side
+  Secret_Guard of 5.6 cannot see it. Until a relay through the Chat_Route
+  exists (D-06), the Chat_UI runs `feed-check.ts` on every frame before
+  display: the D-18 envelope rule in every listed encoding and the
+  declared-secret field rule (`sealed_id`, `x-oscal-subid`
+  `src.service.identity-sled.sealed-id@v1`). The browser holds no
+  Credential_Material values other than its own Door_8090 credential, which
+  is registered with the check as a held value. A match blocks the frame,
+  ends the stream as `blocked`, and the Chat_UI sends a credential-free
+  security report on the decision path. Any check error blocks (fail closed).
+  The publisher-side check that would satisfy 5.6 is a pinned change and is
+  part of B-16.
+- **Feed contents never reach the Chat_Route context:** the `catalog-hint`
+  carries no content, and `feed-denial` fields pass the request-intake guard
+  (5.8) before any record is written.
+- **Feed identity:** the stream is gated for the credential that opened it.
+  On the Host_Dashboard that is the operator's OIA1 or SID1, whose principal
+  may differ from the Bound_Identity (the same gap noted in D-06). The
+  Chat_UI opens feeds only when the Door_8090 caller can be shown equal to
+  the Bound_Identity. The comparison key would be the pinned `owner_key`
+  (`sha256(principal, session, genesis)`), but the Chat_Interface may not
+  copy that derivation, and the principal field is itself OPEN (D-25). Until
+  a pinned interface returns the caller's owner key (for example a granted
+  read through the mount), feeds stay disabled whenever equality cannot be
+  shown, and a Blocker_Record is written. The gate only ever shows a caller
+  its own entitled feeds, so the residual risk of a wrong comparison is
+  showing the operator's feeds next to a different Bound_Identity's chat,
+  not a leak of another identity's feeds.
+
 ## Blocker register
 
 Design-level Blocker_Records. Items marked "reported" come from the owner
@@ -1666,6 +2179,14 @@ timestamp before relying on them. "Held" lists the work that stays proposed.
 | B-13 | Unknown_Outcome repetition | owner | conflict between 8.6 and pinned client guidance (D-10) | `mounted.rs`, README | 2026-11-08 design | mutation repetition |
 | B-14 | `tched_router` exclusion string | owner | conflict between 6.7 and Cockpit_Spec 25.2 (D-32) | — | 2026-11-08 design | registry exclusion task |
 | B-15 | Chat SDK `thread.post` data parts | design | undocumented on pages read (D-02) | — | 2026-11-08 design | Chat SDK intake task |
+| B-16 | per-plugin schema and state publisher on EMQX | design | pinned op-dbus change needing its own Owner_Authorization: no publisher for `SCHEMA_TOPIC_PREFIX` / `STATE_TOPIC_PREFIX` exists (only `publish_toolsets` publishes); no per-identity grant filtering of payloads; no publisher-side Secret_Guard check | `git grep SCHEMA_TOPIC_PREFIX 154a1b9 -- crates` finds only the constant and `wake_doorbell::authorize` | 2026-11-08 design | every feed task (D-37, D-39) |
+| B-17 | grant-based ExHook gate per plugin | design | pinned op-dbus change needing its own Owner_Authorization: pinned `wake_doorbell::authorize` checks only "live sled derives client id" and admits any filter starting with the schema or state prefix, so `opdbus/schema/#` shows every plugin's schema to every live identity; no `required_capability` check; no revocation republish | `wake_doorbell.rs` lines 169-218 at `154a1b9` | 2026-11-08 design | opening any feed (D-39) |
+| B-18 | View_Kind in feed topics | design | pinned op-dbus change: pinned topics `opdbus/schema/<plugin>` and `opdbus/state/<plugin>` carry neither View_Kind nor owner key | `emqx.rs` lines 62-70 | 2026-11-08 design | view-separated feeds (D-39, steering `naming-3tched-threetched.md`) |
+| B-19 | relay from the EMQX-gated subscription to tonic-web `StateSync/Subscribe` | design | pinned op-dbus change: `StateSync::subscribe` is fed from `mutation_engine.change_tx()` and the public SHM snapshot, emits whole PluginSchemas, and has no EMQX link; relay admission to EMQX as the caller's owner key is undesigned (one-time OIA1) | `grpc_server.rs` line 1557 onward at `154a1b9` | 2026-11-08 design | Feed_Consumer enablement (D-40) |
+| B-20 | feeds for an Identity_Container Chat_Route or Chat_UI | design | no existing path: the Lungs_Socket carries operation-file calls only; `127.0.0.1:9000`, EMQX listeners and Door_8090 are host loopback or forbidden from the container (13.3); an Incus proxy device is forbidden (13.7) | D-06, Cockpit_Spec 19.3, 11.4 | 2026-11-08 design | container feed tasks; containers use `describe` and pin checks only |
+| B-21 | server-side Secret_Guard and identity equality for direct-to-browser feeds | owner | Requirement 5.6 requires the server-side guard before any byte reaches the Chat_UI, but the owner flow sends feeds from Door_8090 to the browser without the Chat_Route; the Door_8090 caller may differ from the Bound_Identity; the requirements do not mention feeds | D-41 | 2026-11-08 design | Feed_Consumer enablement; may need a return to requirements |
+| B-22 | port `127.0.0.1:9000` collision | Implementer | runtime observation pending: `fwd-mail-php-9000/run` waits for and relays to `127.0.0.1:9000` (PHP-FPM) while op-grpc-bridge binds ExHook there | `deploy/runit/fwd-mail-php-9000/run` lines 4, 14, 15; `deploy/runit/op-grpc-bridge/run:158` (pinned) | reported (owner `ss -ltnp` shows a listener on `127.0.0.1:9000`; owner not recorded) | every task relying on the ExHook endpoint |
+| B-23 | pinned baseline drift for EMQX | owner | `/srv/git/odbus-verified` HEAD `a2773e1` is ahead of pinned `154a1b9`; at HEAD the ExHook provider is `runtime_mqtt*`, which denies every `opdbus/` topic except the exact own wake topic, and states "MQTT never carries state" (`runtime_mqtt.rs:5`), contrary to owner input (1) unless state feeds stay hints; the 2026-09-19 decision in `wake_doorbell.rs` ("no authoritative state on the broker") needs reconciling with the 2026-11-08 input | `git rev-parse HEAD`; `runtime_mqtt_auth.rs:233-244` | 2026-11-08 design | every feed task until the Baseline_Record re-pins and the owner reconciles |
 
 ## Correctness Properties
 
@@ -1697,6 +2218,9 @@ criteria became the properties below, after folding:
 - 8.12, 11.1, 11.2, 11.5 and 11.6 into the status state-machine property;
   11.4 and 11.7 into the text-independence property.
 - 12.3, 14.1, 14.6 and 20.4 into the context-construction property.
+- the 2026-11-08 plugin-feed input (D-37 to D-41) into Properties 48 to 54,
+  traced to the registry-authority, catalog-change, view, denial and
+  credential criteria they protect; no requirement names feeds yet (B-21).
 - 4.3, 20.5 and 20.10 into the mount-routing property; 20.2, 20.3, 20.9 and
   20.11 into the partition-rejection property.
 
@@ -2263,6 +2787,100 @@ with an unchanged `3tched` view, the `3tched` entries of the re-derived
 registry are identical to those before the change.
 **Validates: Requirements 6.15**
 
+### Plugin feeds (D-37 to D-41)
+
+Properties 48 to 54 run against the Feed_Consumer, `feed-topics.ts`,
+`feed-check.ts` and the Chat_Route feed hints with a fake Door_8090 stream
+and a fake broker. Properties 50 and 51 also use a **reference gate model**:
+a pure function in the test tree that states the D-39 gate (exact topic, own
+owner key, live sled, held capability, no `+` or `#`, filtered payload,
+republish and kick on revocation). The model is the specification for the
+pinned change of B-17; it is not the pinned gate, which is tested only by
+integration once B-16 to B-19 are resolved.
+
+### Property 48: Per-plugin isolation
+
+*For any* set of plugin ids, views and owner keys, the D-39 topic builder is
+injective over `(viewKind, kind, plugin, ownerKey, events)`; and *for any*
+sequence of frames on a stream opened for plugin `p`, the Feed_Consumer
+displays only frames whose `plugin_id` is `p`, and any frame for another
+plugin ends the stream as `blocked` with nothing of it displayed.
+
+**Validates: Requirements 6.12, 20.2**
+
+### Property 49: View separation
+
+*For any* plugin id, `feed-topics.ts` maps it to the `threetched` view if and
+only if it is the `threetched` plugin, every topic it builds for that plugin
+starts with `opdbus/<that view>/`, no built topic contains `+`, `#`,
+`zeroclaw` or a D-32 excluded name, and a frame whose plugin maps to a
+different view than the stream's is not displayed.
+
+**Validates: Requirements 6.12, 6.13, 8.13, 8.14**
+
+### Property 50: Gated visibility, including wildcards
+
+*For any* identities with arbitrary held capability sets, plugins with
+arbitrary method declarations, and subscribe filters (exact topics, other
+identities' owner keys, `+` and `#` at any level, the pinned unviewed
+prefixes), the method schemas delivered to identity `A` under the reference
+gate model are exactly the methods of subscribed plugins whose
+`required_capability` is in `A`'s held set; state is delivered only for
+plugins whose read capability `A` holds; every filter with a wildcard or
+another owner key is denied; and a gate error, timeout or unparsable grant
+denies.
+
+**Validates: Requirements 6.2, 6.3, 6.8, 20.6**
+
+### Property 51: Revocation stops delivery
+
+*For any* event sequence of publishes, subscriptions and grant revocations
+or sled tombstones under the reference gate model, no message carrying a
+revoked method's schema or a revoked plugin's state is delivered to the
+identity after its revocation has been applied (republish and kick
+acknowledged); a re-subscribe after revocation runs the gate again and is
+denied when nothing is granted; and the Feed_Consumer clears that plugin's
+displayed schema and state when its stream ends.
+
+**Validates: Requirements 7.5, 7.9**
+
+### Property 52: Feeds never change the offered set
+
+*For any* sequence of feed frames (including schemas that add methods,
+remove methods, change argument schemas or name capabilities the identity
+does not hold) and catalog hints, the Tool_Registry snapshot, the offered
+set, the Schema_Validator results and the Confirmation_Gate state equal those
+of the same session without feeds, unless the mount's own catalog pin read
+by the Chat_Route changed; and a refused feed subscription produces exactly
+one feed-denial report and no further stream for that plugin in the session
+through any RPC, credential or topic.
+
+**Validates: Requirements 6.1, 6.9, 7.4, 14.3**
+
+### Property 53: No Credential_Material displayed from a feed
+
+*For any* feed frame with Credential_Material planted per Property 1 in any
+field (schema JSON, state value, object path, member name, error status) in
+any D-18 encoding, including the browser's own Door_8090 credential and
+declared-secret members, `feed-check.ts` blocks the frame, nothing of it is
+rendered, the stream ends as `blocked`, and the security report sent to the
+Chat_Route contains no 16-byte window of the planted value and no digest of
+it.
+
+**Validates: Requirements 5.1, 5.2, 5.4, 5.6**
+
+### Property 54: Catalog change on a feed discards pending calls only through the server pin
+
+*For any* session with pending unconfirmed Tool_Calls, any feed frame
+carrying a changed `catalog_hash` or `state_generation`, and any mount pin
+value, the resulting catalog hint leads to registry re-derivation, a
+Held_Capability_Set re-read and discard of every pending unconfirmed
+Tool_Call if and only if the mount pin read by the Chat_Route differs from
+the snapshot pin; when it does not differ, every pending record and the
+registry are deep-equal before and after.
+
+**Validates: Requirements 6.5, 6.10**
+
 ## Error Handling
 
 Every error the Chat_Route returns is a `TypedError` with exactly one
@@ -2299,6 +2917,21 @@ UI as such:
   Blocker_Record is written.
 - **Catalog change** (6.5, 6.10): the call is refused before sending; the
   model receives a "catalog changed" tool result; the registry re-derives.
+- **Feed refused or revoked** (D-39, D-40): the stream ends with
+  `PERMISSION_DENIED` or `UNAUTHENTICATED`; the Chat_UI shows an
+  `ErrorNotice` of kind `denial` naming `StateSync/Subscribe <plugin>`;
+  one `feed-denial` report leads to a Blocker_Record in the Chat_Route; no
+  retry through another identity, credential, RPC or topic. Tool_Call
+  statuses and the registry are unaffected.
+- **Feed frame blocked by `feed-check.ts`** (D-41): the frame is not
+  displayed, the stream ends as `blocked`, and a credential-free security
+  report is sent; a check error blocks the same way (fail closed).
+- **Feed transport failure** (network, server restart): the feed panel
+  shows kind `transport` naming Door_8090; one re-open per 10 s through the
+  same RPC and gate; no other path.
+- **Feeds unavailable** (B-16 to B-23, or the Door_8090 caller cannot be
+  shown equal to the Bound_Identity): the Feed_Consumer stays disabled and
+  the UI says so; plugin schemas still come from `data-session`.
 
 ## Testing Strategy
 
@@ -2313,7 +2946,7 @@ strategy.
 
 ### Dual approach
 
-- **Property-based tests** cover Properties 1 to 44, one test per
+- **Property-based tests** cover Properties 1 to 54, one test per
   property. Library: `fast-check` 4.10.2, already a dev entry in the D-01
   table; no other property library is added. Runner: the test runner the
   implementation task selects (a dev dependency that must itself be pinned
@@ -2384,6 +3017,12 @@ with Owner_Authorization before it can run (17.1).
 - View routing (Properties 45 to 47) uses a fake Operation_File adapter
   that serves two independent fake views and records the mount path of
   every call; no live view is mounted or called by tests.
+- Plugin feeds (Properties 48 to 54) use a fake Door_8090 gRPC-Web stream,
+  a fake broker and the reference gate model of the Correctness Properties
+  section. No test connects to EMQX, `127.0.0.1:9000`, `:1883`, `:8085` or
+  Door_8090. The real gate, publisher and relay are pinned op-dbus code;
+  their tests are integration tests that run only after B-16 to B-19 are
+  resolved with Owner_Authorization, and they need a Live_Change.
 
 ## Security Considerations
 
@@ -2441,6 +3080,17 @@ item below. Each threat is handled by decisions already recorded above.
   refused (4.15, Property 11). The main 3tched names and session reserved by
   the steering file cannot be adopted, because a session binds only to the
   identity its own mount returns.
+- **Plugin feeds (EMQX, Owner_Authorization OA-2026-11-08-EMQX).** EMQX is
+  approved as a control-plane channel for schema and state delivery only;
+  it adds no inbound door, because the ExHook endpoint `127.0.0.1:9000`
+  pre-exists and the browser reaches feeds only through Door_8090 (D-37).
+  Every feed is gated at EMQX delivery from the identity's existing grants,
+  per identity and per plugin, with wildcards denied and failures closed
+  (D-39). Feeds never offer tools or bypass validation or confirmation
+  (D-38). The direct-to-browser path cannot be checked by the server-side
+  Secret_Guard, so the Chat_UI checks every frame and the Feed_Consumer
+  stays disabled until B-16 to B-21 are resolved (D-40, D-41). Properties
+  48 to 54.
 
 ## Status
 
@@ -2469,26 +3119,41 @@ item below. Each threat is handled by decisions already recorded above.
 | D-18 (part) | SID1 and OIA1 envelope grammar | precise envelope rule (interim rule may over-block) |
 | D-25 | principal id field (proposed `genesis`) | partition key, start comparison, every session |
 | D-32 (conflict, B-14) | `tched_router` exclusion string versus Cockpit_Spec 25.2 | registry exclusion task; may need a requirements amendment |
+| D-39 (part) | whether EMQX HTTP `/publish` runs `message.publish`; authorization cache and kick interval on the deployed broker; plugin read capability per plugin | relying on the gate for revocation |
+| D-40 (part, B-19) | relay from the gated EMQX subscription to `StateSync/Subscribe`; Door_8090 listener and HTTP/2 | Feed_Consumer enablement |
+| D-41 (conflict, B-21) | server-side Secret_Guard and Bound_Identity equality for direct-to-browser feeds | Feed_Consumer enablement; may need a return to requirements |
 
 PROPOSED-DEFAULT decisions needing owner confirmation (they do not block
 writing code but may change it): D-01, D-02, D-03, D-16, D-19, D-20
-(`standard` = 5), D-21, D-22, D-24, D-26, D-28, D-29, D-33, D-34.
+(`standard` = 5), D-21, D-22, D-24, D-26, D-28, D-29, D-33, D-34, D-39
+(topic scheme and per-identity filtered topics), D-40 (reuse of
+`StateSync/Subscribe`), D-41 (client-side feed check). DECIDED: D-37
+(Owner_Authorization OA-2026-11-08-EMQX), D-38 (`describe` stays
+authoritative).
 
 ### Open blockers
 
-All Blocker register entries B-01 to B-15 are open: B-01 (host mount
+All Blocker register entries B-01 to B-23 are open: B-01 (host mount
 catalog defect), B-02 (no mount or Lungs_Socket for the current user), B-03
 (no 3tchedW3_Identity), B-04 and B-05 (no Chat_Route location), B-06 and
 B-07 (no Egress_Path), B-08 (provider decisions), B-09 (`--guest-kernel`
 only in the working tree), B-10 (`refresh_credential` output differs from
 the pinned commit), B-11 (Held_Capability_Set source), B-12 (Execution_Record
 read), B-13 (Unknown_Outcome conflict), B-14 (exclusion-string conflict),
-B-15 (Chat SDK data parts).
+B-15 (Chat SDK data parts), B-16 (no per-plugin feed publisher), B-17 (no
+grant-based ExHook gate; pinned wildcard gap), B-18 (no View_Kind in
+topics), B-19 (no relay from EMQX to the tonic-web stream), B-20 (no feed
+path for containers), B-21 (server-side guard and identity equality for
+direct feeds), B-22 (port 9000 collision check), B-23 (baseline drift:
+HEAD refuses feed topics). B-16 to B-19 each need a separate
+Owner_Authorization naming the pinned op-dbus change.
 
 Work that does not depend on these can proceed once the owner asks: the
 Chat_Route core library, the Secret_Guard, the Profile_Loader, the
 Schema_Validator, the Confirmation_Gate, the status machine, the
-Chain_Verifier, the Partitioned_Store, the in-process host and the
-repository checks, all against synthetic fixtures. Two items may need a
-return to requirements: Requirement 8.6 (B-13) and Requirement 6.7 against
-Cockpit_Spec 25.2 (B-14).
+Chain_Verifier, the Partitioned_Store, the in-process host, the repository
+checks, and the Feed_Consumer, feed check and feed hints (built disabled),
+all against synthetic fixtures. Three items may need a return to
+requirements: Requirement 8.6 (B-13), Requirement 6.7 against Cockpit_Spec
+25.2 (B-14), and feeds, which no requirement covers yet, against
+Requirement 5.6 (B-21).

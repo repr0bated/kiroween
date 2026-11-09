@@ -1,0 +1,10 @@
+{
+  "missing-mount": "Check that the mount path is configured correctly in the Identity_Profile",
+  "transport": "Check network connectivity and the Lungs_Socket connection",
+  "provider": "Check the Model_Provider configuration and credentials",
+  "schema": "Verify the tool argument matches the sealed method schema",
+  "configuration": "Verify the Identity_Profile is valid and complete",
+  "unknown-outcome": "Operation completed but outcome is unknown - review logs and receipts",
+  "denial": "Check that the required capability is granted to this identity",
+  "validation": "Fix the tool argument to match the schema requirements"
+}

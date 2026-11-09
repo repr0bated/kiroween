@@ -540,7 +540,7 @@ disrupted.
 1. THE Implementer SHALL apply Cockpit_Spec Requirement 20 to every Chat_Interface task that would perform a Live_Change, including deploying or running the Chat_Interface under any Branch (Requirement 4.12), deploying the Chat_UI or Chat_Route, and changing grants.
 2. THE Implementer SHALL run tests, linters, formatting checks and smoke fixtures for the Chat_Interface only on explicit owner request.
 3. WHEN a build is required, THE Implementer SHALL build only the Chat_Interface package and, for any Rust target, only the required scoped target for `x86_64-unknown-linux-gnu` under Cockpit_Spec Requirement 21.
-4. THE Implementer SHALL leave `/srv/git/odbus-verified`, `/srv/git/3tched.com`, `.kiro/steering/security-boundaries.md` and the Cockpit_Spec unmodified.
+4. THE Implementer SHALL leave `/srv/git/odbus-verified`, `/srv/git/3tched.com`, `.kiro/steering/security-boundaries.md` and the Cockpit_Spec unmodified, except for the chat-code removal and the `ctl_plane_chatbot` coupling cut of Requirements 21 and 22, which steering `chat-clean-slate.md` records as the owner's exception.
 
 ### Requirement 18: Status, provenance and commits
 

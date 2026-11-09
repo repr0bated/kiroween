@@ -1,0 +1,9 @@
+How did you structure your spec for Kiro to implement? How did the spec-driven approach improve your development process? How did this compare to vibe coding?
+
+I structured the spec around what Kiro needed to figure out before building anything. First, check whether the cockpit container already exists and trace the current identity and lifecycle code. If it exists, preserve it and use the supported maintenance path. If it doesn’t, find the actual provisioning path before creating anything.
+
+I also spelled out the boundaries: keep the existing identity, grants, and storage intact; use the mounted 3tchedFS operations; and verify the result through receipts and authoritative state. The spec asks Kiro to report what it changed, built, tested, and deployed separately so those don’t get blurred together.
+
+The spec-driven approach gave Kiro a clear goal and enough context to make decisions without guessing at the architecture. It also made the work easier to review because the expected behavior and constraints were written down upfront. I haven’t had Kiro execute it yet, so I can’t claim results from the implementation.
+
+With vibe coding, I could have just asked Kiro to “make a root cockpit container” and let it figure out the rest. That might produce something quickly, but it could also create a duplicate container or assume “root” means privileged access. The spec gives it room to investigate while keeping it inside the boundaries that matter.
